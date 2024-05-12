@@ -25,7 +25,7 @@ impl.vectorize(["k1"])
 impl.parallelize(["i"])
 impl.unroll({"j1": 8, "i1": 8})
 
-e = impl.evaluate(
+impl.compile(
     print_source_ir=False,
     print_transformed_ir=False,
     print_ir_after=[],
@@ -33,4 +33,3 @@ e = impl.evaluate(
     print_assembly=True,
     color=True,
 )
-print(e)

@@ -30,7 +30,7 @@ e = impl.evaluate(
     print_transformed_ir=False,
     print_ir_after=[],
     print_ir_before=[],
-    print_assembly=True,
+    print_assembly=False,
     color=True,
 )
 print(e)
