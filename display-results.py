@@ -55,7 +55,15 @@ def draw_pmf(ax, Y, bins=20, label=None):
 
 
 def draw_cdf(ax, Y, bins=20, label=None):
-    plt.hist(Y, density=True, cumulative=True, label=label, histtype="step", alpha=0.8)
+    plt.hist(
+        Y,
+        bins=bins,
+        density=True,
+        cumulative=True,
+        label=label,
+        histtype="step",
+        alpha=0.8,
+    )
 
 
 def save_fig(fname):

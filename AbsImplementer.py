@@ -6,6 +6,7 @@ from abc import ABC
 from abc import abstractmethod
 import subprocess
 import sys
+import os
 
 import xdsl
 from xdsl.dialects.builtin import (
@@ -38,8 +39,9 @@ lowering_opts = [
     "--convert-math-to-llvm",
     "--expand-strided-metadata",
     "--lower-affine",
+    "--buffer-results-to-out-params",
     "--finalize-memref-to-llvm",
-    "--convert-func-to-llvm",
+    "--convert-func-to-llvm=use-bare-ptr-memref-call-conv",
     "--convert-index-to-llvm",
     "--reconcile-unrealized-casts",
 ]
@@ -48,28 +50,35 @@ mliropt_opts = transform_opts + lowering_opts
 
 mlirtranslate_opts = ["--mlir-to-llvmir"]
 
-llc_opts = [
-    "-O3",
-    "-filetype=obj",
-    # '--march=native'
-]
+llc_opts = ["-O3", "-filetype=obj", "--mcpu=native"]
 
 opt_opts = ["-O3", "--march=native"]
 
-clang_opts = ["-O3", "-march=native"]
+cc_opts = ["-O3", "-march=native"]
+
+shared_lib_opts = ["--shared", *cc_opts]
+
+exe_opts = [*cc_opts]
+
+runtime_libs = [
+    "libmlir_runner_utils.so",
+    "libmlir_c_runner_utils.so",
+]
 
 dump_file = "/tmp/dump"
 
 mlirrunner_opts = [
     "-e",
-    "main",
+    "entry",
     "--entry-point-result=void",
     "--O3",
 ]
 
 objdump_bin = "objdump"
 
-objdump_opts = ["-d", "--no-addresses", "--no-show-raw-insn", "--visualize-jumps"]
+cc_bin = "cc"
+
+objdump_opts = ["-dr", "--no-addresses", "--no-show-raw-insn", "--visualize-jumps"]
 
 objdump_color_opts = [
     "--visualize-jumps=color",
@@ -92,8 +101,7 @@ class AbsImplementer(ABC):
         #
         self.cmd_run_mlir = [
             f"{mlir_install_dir}/bin/mlir-cpu-runner",
-            f"-shared-libs={mlir_install_dir}/lib/libmlir_runner_utils.so",
-            f"-shared-libs={mlir_install_dir}/lib/libmlir_c_runner_utils.so",
+            *[f"-shared-libs={mlir_install_dir}/lib/{lib}" for lib in runtime_libs],
         ] + mlirrunner_opts
         #
         self.cmd_mlirtranslate = [
@@ -104,7 +112,14 @@ class AbsImplementer(ABC):
         #
         self.cmd_opt = [f"{mlir_install_dir}/bin/opt"] + opt_opts
         #
-        self.cmd_clang = [f"{mlir_install_dir}/bin/clang"] + clang_opts
+        self.cmd_cc = [cc_bin]
+        #
+        self.shared_libs = [f"{mlir_install_dir}/lib/{lib}" for lib in runtime_libs]
+        self.shared_path = list(
+            dict.fromkeys(
+                [f"-Wl,--rpath={os.path.dirname(lib)}" for lib in self.shared_libs]
+            )
+        )
         #
         self.cmd_disassembler = (
             [objdump_bin] + objdump_opts + [f"--disassemble={self.payload_name}"]
@@ -155,6 +170,7 @@ class AbsImplementer(ABC):
         print_ir_before,
         color,
         debug,
+        print_lowered_ir,
     ):
         compile_extra_opts = self.build_compile_extra_opts(
             print_source_ir=print_source_ir,
@@ -167,7 +183,9 @@ class AbsImplementer(ABC):
         module_llvm = self.execute_command(
             cmd=compile_cmd, input_pipe=code, debug=debug
         )
-
+        if print_lowered_ir:
+            print(f"// -----// IR Dump After MLIR Opt //----- //", file=sys.stderr)
+            print(module_llvm.stdout, file=sys.stderr)
         return str(module_llvm.stdout)
 
     def disassemble(self, obj_file, color, debug):
@@ -216,6 +234,7 @@ class AbsImplementer(ABC):
         color=True,
         dump_file=dump_file,
         debug=False,
+        print_lowered_ir=False,
     ):
         exe_dump_file = f"{dump_file}.o"
 
@@ -229,6 +248,7 @@ class AbsImplementer(ABC):
             print_ir_before=print_ir_before,
             color=color,
             debug=debug,
+            print_lowered_ir=print_lowered_ir,
         )
 
         run_extra_opts = self.build_run_extra_opts(
@@ -268,10 +288,16 @@ class AbsImplementer(ABC):
         color=True,
         dump_file=dump_file,
         debug=False,
+        print_lowered_ir=False,
+        shared_lib=False,
+        executable=False,
     ):
         ir_dump_file = f"{dump_file}.ir"
         bc_dump_file = f"{dump_file}.bc"
-        exe_dump_file = f"{dump_file}.o"
+        obj_dump_file = f"{dump_file}.o"
+        so_dump_file = f"{dump_file}.so"
+        exe_c_file = f"{dump_file}.main.c"
+        exe_dump_file = f"{dump_file}.out"
 
         source_ir = self.glue()
 
@@ -283,6 +309,7 @@ class AbsImplementer(ABC):
             print_ir_before=print_ir_before,
             color=color,
             debug=debug,
+            print_lowered_ir=print_lowered_ir,
         )
 
         translate_cmd = self.cmd_mlirtranslate + ["-o", ir_dump_file]
@@ -290,10 +317,11 @@ class AbsImplementer(ABC):
             cmd=translate_cmd, input_pipe=str_module_llvm, debug=debug
         )
 
-        opt_cmd = self.cmd_opt + [ir_dump_file, "-o", bc_dump_file]
+        opt_pic = ["--relocation-model=pic"] if shared_lib else []
+        opt_cmd = self.cmd_opt + opt_pic + [ir_dump_file, "-o", bc_dump_file]
         bc_process = self.execute_command(cmd=opt_cmd, debug=debug)
 
-        llc_cmd = self.cmd_llc + [bc_dump_file, "-o", exe_dump_file]
+        llc_cmd = self.cmd_llc + opt_pic + [bc_dump_file, "-o", obj_dump_file]
         bc_process = self.execute_command(cmd=llc_cmd, debug=debug)
 
         # clang_cmd = self.cmd_clang + ['-c', ir_dump_file, '-o', exe_dump_file]
@@ -301,8 +329,38 @@ class AbsImplementer(ABC):
 
         if print_assembly:
             disassemble_process = self.disassemble(
-                obj_file=exe_dump_file, color=color, debug=debug
+                obj_file=obj_dump_file, color=color, debug=debug
             )
+
+        payload_objs = [obj_dump_file, *self.shared_libs]
+        payload_path = [*self.shared_path]
+        if shared_lib:
+            shared_cmd = [
+                *self.cmd_cc,
+                *shared_lib_opts,
+                obj_dump_file,
+                "-o",
+                so_dump_file,
+                *self.shared_libs,
+                *self.shared_path,
+            ]
+            self.execute_command(cmd=shared_cmd, debug=debug)
+            payload_objs = [so_dump_file]
+            payload_path = ["-Wl,--rpath=${ORIGIN}"]
+
+        if executable:
+            exe_cmd = [
+                *self.cmd_cc,
+                *exe_opts,
+                exe_c_file,
+                "-o",
+                exe_dump_file,
+                *payload_objs,
+                *payload_path,
+            ]
+            with open(exe_c_file, "w") as outf:
+                outf.write("extern void entry(void); int main() { entry(); return 0; }")
+            self.execute_command(cmd=exe_cmd, debug=debug)
 
     def glue(self):
         # Generate the payload

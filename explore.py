@@ -49,35 +49,50 @@ import random
 import numpy as np
 from tqdm import tqdm
 
-from xdsl.dialects import func, linalg
-from xdsl.dialects.builtin import TensorType, f32, f64
-from xdsl.ir import Block
-
 import utils
-import Implementer as mlir_impl
+from XdslImplementer import XdslImplementer as xdsl_impl
+from MlirImplementer import MlirImplementer as mlir_impl
+
 import TVMImplementer as tvm_impl
 
 logger = logging.getLogger(__name__)
 
 
-def mlir_matmul(i, j, k, dtype):
-    operands_types = [
-        TensorType(MTYPES_MAP[dtype], shape) for shape in [[i, k], [k, j], [i, j]]
-    ]
-    op_block = Block(arg_types=operands_types)
-    op_matmul = linalg.MatmulOp(
-        (op_block.args[0], op_block.args[1]), (op_block.args[2],)
+def xdsl_matmul(i, j, k, dtype):
+    from xdsl.dialects import func, linalg
+    from xdsl.dialects.builtin import TensorType, f32, f64
+    from xdsl.ir import Block
+
+    elt_type = {"f32": f32, "f64": f64}[dtype]
+    operands_types = [TensorType(elt_type, shape) for shape in [[i, k], [k, j], [i, j]]]
+    block0 = Block(arg_types=operands_types)
+    matmul = linalg.MatmulOp(
+        (block0.args[0], block0.args[1]),
+        (block0.args[2],),
     )
-    return op_matmul
+    return matmul
+
+
+def xdsl_matmul_sched(i, j, k, dtype):
+    op_matmul = xdsl_matmul(i, j, k, dtype)
+    sched = xdsl_impl(
+        mlir_install_dir=f"{HOME}/bin/llvm-xdsl",
+        source_op=op_matmul,
+        dims={"i": i, "j": j, "k": k},
+        parallel_dims=["i", "j"],
+        reduction_dims=["k"],
+    )
+    return sched, op_matmul
 
 
 def mlir_matmul_sched(i, j, k, dtype):
-    op_matmul = mlir_matmul(i, j, k, dtype)
-    sched = mlir_impl.Implementer(
+    op_matmul = xdsl_matmul(i, j, k, dtype)
+    sched = mlir_impl(
         mlir_install_dir=f"{HOME}/bin/llvm-xdsl",
         source_op=op_matmul,
-        dims=dict(i=i, j=j, k=k),
+        dims={"i": i, "j": j, "k": k},
         parallel_dims=["i", "j"],
+        reduction_dims=["k"],
     )
     return sched, op_matmul
 
@@ -317,7 +332,9 @@ def evaluate_one(scheduler, tile_strategy, op_args, in_x, args, callback=None):
             dict(
                 print_source_ir=True,
                 print_transformed_ir=True,
+                print_lowered_ir=True,
                 print_assembly=True,
+                color=False,
             )
         )
     stdout = impl.evaluate(**eval_args)
@@ -452,11 +469,6 @@ HOME = os.environ.get("HOME", "")
 
 THREADS = None
 
-MTYPES_MAP = {
-    "f32": f32,
-    "f64": f64,
-}
-
 DTYPES_MAP = {
     "f32": "float32",
     "f64": "float64",
@@ -469,8 +481,12 @@ OPERATORS = {
         "default_type": "f32",
         "backends": {
             "mlir": {
-                "operation": mlir_matmul,
+                "operation": xdsl_matmul,
                 "scheduler": mlir_matmul_sched,
+            },
+            "xdsl": {
+                "operation": xdsl_matmul,
+                "scheduler": xdsl_matmul_sched,
             },
             "tvm": {
                 "operation": tvm_matmul,
@@ -529,7 +545,7 @@ def main():
     parser.add_argument(
         "--backend",
         type=str,
-        choices=["mlir", "tvm"],
+        choices=["mlir", "tvm", "xdsl"],
         default="mlir",
         help="backend to use",
     )
@@ -549,7 +565,7 @@ def main():
     parser.add_argument(
         "--dtype",
         type=str,
-        choices=list(MTYPES_MAP.keys()),
+        choices=list(DTYPES_MAP.keys()),
         default=OPERATORS["matmul"]["default_type"],
         help="data type",
     )
