@@ -25,7 +25,7 @@ matmul = linalg.MatmulOp(
 )
 
 
-def mm():
+def mm1():
     impl = MlirImplementer(
         mlir_install_dir=f"{home}/bin/llvm-xdsl",
         source_op=matmul,
