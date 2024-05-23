@@ -21,13 +21,15 @@ import transform
 transform_opt = "transform-interpreter"
 transform_opts = [
     f"--{transform_opt}",
-    "--canonicalize",
-    "--cse",
-    "--sccp",
 ]
 
 lowering_opts = [
     "--test-transform-dialect-erase-schedule",
+    "--lower-affine",
+    "--loop-invariant-code-motion",
+    "--cse",
+    "--sccp",
+    "--canonicalize",
     "--func-bufferize",
     "--convert-vector-to-scf",
     "--convert-linalg-to-loops",
@@ -89,7 +91,14 @@ objdump_color_opts = [
 class AbsImplementer(ABC):
     count = 0
 
-    def __init__(self, mlir_install_dir: str, payload_name=None):
+    def __init__(
+        self,
+        mlir_install_dir: str,
+        vectors_size: int,
+        payload_name=None,
+    ):
+        self.vectors_size = vectors_size
+
         self.payload_name = (
             payload_name if payload_name else f"payload{AbsImplementer.count}"
         )

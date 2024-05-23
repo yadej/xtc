@@ -16,6 +16,7 @@ i = 512
 j = 128
 k = 1024
 elt_type = f32
+vectors_size = 16
 
 
 def mm1():
@@ -32,6 +33,7 @@ def mm1():
         dims={"i": i, "j": j, "k": k},
         parallel_dims=["i", "j"],
         reduction_dims=["k"],
+        vectors_size=vectors_size,
     )
 
     impl.tile("i", {"i1": 8})
