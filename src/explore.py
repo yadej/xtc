@@ -553,31 +553,13 @@ def evaluate_all_parallel(tile_strategy, all_in_x, op_args, args, callback):
 
     nback = len(args.backends)
     ntasks = len(all_in_x) * nback
-    allbar = tqdm(
-        desc="Overall",
-        colour="red",
-        total=ntasks,
-        position=0,
-        smoothing=0,
-        disable=args.quiet,
+    tqdm_args = dict(
+        total=ntasks, miniters=0, mininterval=0, smoothing=0, disable=args.quiet
     )
-    compbar = tqdm(
-        desc="Compile",
-        colour="blue",
-        total=ntasks,
-        position=1,
-        smoothing=0,
-        disable=args.quiet,
-    )
+    allbar = tqdm(desc="Overall", colour="red", position=0, **tqdm_args)
+    compbar = tqdm(desc="Compile", colour="blue", position=1, **tqdm_args)
     if args.execute:
-        evalbar = tqdm(
-            desc="Execute",
-            colour="green",
-            total=ntasks,
-            position=2,
-            smoothing=0,
-            disable=args.quiet,
-        )
+        evalbar = tqdm(desc="Execute", colour="green", position=2, **tqdm_args)
     try:
         for job_idx, job_in_x in enumerate(
             np.array_split(all_in_x, np.ceil(len(all_in_x) / jobs), axis=0)
@@ -592,19 +574,15 @@ def evaluate_all_parallel(tile_strategy, all_in_x, op_args, args, callback):
                     )
                 )
                 compbar.update(nback)
-                compbar.refresh()
                 if not args.execute:
                     allbar.update(nback)
-                    allbar.refresh()
             else:
 
                 def future_callback(future):
                     job_compiled.append(future.result())
                     compbar.update(nback)
-                    compbar.refresh()
                     if not args.execute:
                         allbar.update(nback)
-                        allbar.refresh()
 
                 with ThreadPoolExecutor(max_workers=jobs) as executor:
                     futures = [
@@ -618,9 +596,7 @@ def evaluate_all_parallel(tile_strategy, all_in_x, op_args, args, callback):
                     for future in futures:
                         future.add_done_callback(future_callback)
             compbar.update(0)
-            compbar.refresh()
             allbar.update(0)
-            allbar.refresh()
 
             if args.execute:
                 compiled_results = [
@@ -640,9 +616,7 @@ def evaluate_all_parallel(tile_strategy, all_in_x, op_args, args, callback):
                             callback=callback,
                         )
                         evalbar.update(1)
-                        evalbar.refresh()
                         allbar.update(1)
-                        allbar.refresh()
     finally:
         compbar.unpause()
         if args.execute:
