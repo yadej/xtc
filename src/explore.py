@@ -186,14 +186,14 @@ def tvm_matmul_impl(i, j, k, ftype, graph, args):
     import TVMImplementer
 
     node = graph["nodes"]["matmul"]
-    sched = TVMImplementer.Implementer(
+    impl = TVMImplementer.Implementer(
         source_op=node["op"],
         dims=node["dims"],
         parallel_dims=node["parallel_dims"],
     )
-    compiler = sched
-    impl_node = sched
-    return compiler, sched, impl_node, node["op"], "tvm"
+    compiler = impl
+    node_scheduler = impl.get_scheduler()
+    return compiler, node_scheduler, node_scheduler, node["op"], "tvm"
 
 
 def jir_matmul_graph(i, j, k, ftype):
@@ -497,16 +497,19 @@ def compile_one(
     assert isinstance(in_x, list), f"X not a list: {in_x} ({type(in_x)})"
     logger.debug("Compile: %s: %s: %s...", ident, backend, in_x)
     implementer = OPERATORS[args.operator]["backends"][backend]["implementer"]
-    compiler, module, node, source_op, backend_name = implementer(
+    compiler, scheduler, node_scheduler, source_op, backend_name = implementer(
         *op_args, operation, args
     )
-    import sys
-
-    print("XXXX", compiler, module, node, source_op, backend_name, file=sys.stderr)
     assert backend_name == backend
-    tile_strategy(node, op_args, in_x)
-    module.implement()
-    compile_args = {}
+    tile_strategy(node_scheduler, op_args, in_x)
+    schedule = scheduler.implement()
+    dump_file = f"payload_{ident}"
+    compile_args = dict(
+        schedule=schedule,
+        shared_lib=True,
+        dump_file=dump_file,
+        no_entry=True,
+    )
     if args.dump:
         compile_args.update(
             dict(
@@ -525,10 +528,7 @@ def compile_one(
             )
         )
     assert args.eval == "eval"
-    dump_file = f"payload_{ident}"
-    compiler.compile(
-        **compile_args, shared_lib=True, dump_file=dump_file, no_entry=True
-    )
+    compiler.compile(**compile_args)
     logger.debug("  Compile done: %s: %s.", ident, in_x)
     return (ident, backend, compiler, dump_file, in_x)
 
