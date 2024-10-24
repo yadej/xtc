@@ -1,4 +1,4 @@
-#! venv/bin/python3
+#!/usr/bin/env python3
 #
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2024-2026 The XTC Project Authors
