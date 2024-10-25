@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2024-2026 The XTC Project Authors
 #
+from abc import ABC, abstractmethod
 import numpy as np
 from mlir.ir import (
     Type,
@@ -14,7 +15,6 @@ from mlir.ir import (
     UnitAttr,
     Module,
 )
-
 from mlir.dialects import (
     arith,
     memref,
@@ -22,11 +22,16 @@ from mlir.dialects import (
     builtin,
     func,
 )
+from xdsl.dialects import func as xdslfunc
+
+from xdsl_aux import brand_inputs_with_noalias
+import transform
 
 
-class MlirModule:
+class MlirModule(ABC):
     def __init__(
         self,
+        xdsl_func: xdslfunc.FuncOp,
     ):
         #
         self.ctx = Context()
@@ -48,6 +53,13 @@ class MlirModule:
         #
         self.local_functions = {}
         #
+        brand_inputs_with_noalias(xdsl_func)
+        payload_func = self.parse_and_add_function(str(xdsl_func))
+        self.payload_name = str(payload_func.name).replace('"', "")
+        self.measure_execution_time(
+            new_function_name="entry",
+            measured_function_name=self.payload_name,
+        )
 
     def add_external_function(
         self,
@@ -128,7 +140,7 @@ class MlirModule:
             func.ReturnOp([], loc=self.loc)
         return fmain
 
-    def inject_schedule(self, schedule_kernel: list[str]):
+    def inject_str_schedule(self, schedule_kernel: list[str]):
         if self.schedule_injected:
             return
         attr_name = "transform.with_named_sequence"
@@ -145,3 +157,20 @@ class MlirModule:
             for o in trans_match.body.operations:
                 o.operation.clone()
         self.schedule = True
+
+    def inject_schedule(self):
+        sym_name = "@__transform_main"
+        myvar = transform.get_new_var()
+        sym_name, input_var, seq_sig = transform.get_seq_signature(
+            input_var=myvar, sym_name=sym_name
+        )
+        handle, kernel = self.schedule_kernel(signature=seq_sig, input_var=input_var)
+        self.inject_str_schedule(kernel)
+
+    @abstractmethod
+    def schedule_kernel(
+        self,
+        signature: str,
+        input_var: str,
+    ) -> tuple[str, list[str]]:
+        pass
