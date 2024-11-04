@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2024-2026 The XTC Project Authors
 #
+from abc import ABC, abstractmethod
 from xdsl.dialects import func as xdslfunc
 from mlir.dialects import func, builtin, arith, memref, linalg
 from mlir.ir import (
@@ -16,7 +17,7 @@ from mlir.ir import (
 import numpy as np
 
 
-class MlirModule:
+class MlirModule(ABC):
     def __init__(self, xdsl_funcs: list[xdslfunc.FuncOp]):
         self.ctx = Context()
         self.loc = Location.unknown(self.ctx)
@@ -123,3 +124,15 @@ class MlirModule:
 
             func.ReturnOp([], loc=self.loc)
         return fmain
+
+    @abstractmethod
+    def np_inputs_spec(self) -> list[dict[str, tuple[int, ...] | str]]:
+        pass
+
+    @abstractmethod
+    def np_outputs_spec(self) -> list[dict[str, tuple[int, ...] | str]]:
+        pass
+
+    @abstractmethod
+    def reference_impl(self, *operands):
+        pass
