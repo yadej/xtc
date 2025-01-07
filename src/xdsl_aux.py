@@ -13,7 +13,6 @@ from xdsl.dialects.arith import ConstantOp
 from xdsl.dialects.builtin import (
     AnyMemRefType,
     AnyIntegerAttr,
-    ArrayAttr,
     FloatAttr,
     DictionaryAttr,
     UnitAttr,
@@ -23,9 +22,10 @@ from xdsl.dialects.builtin import (
 from xdsl.context import MLContext
 from xdsl.parser import Parser
 from xdsl.dialects import func, linalg, arith, memref
+from xdsl.dialects.builtin import ModuleOp
 
 
-def parse_xdsl_module(source: str):
+def parse_xdsl_module(source: str) -> ModuleOp:
     context = MLContext()
     context.load_dialect(func.Func)
     context.load_dialect(linalg.Linalg)
