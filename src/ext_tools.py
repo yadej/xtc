@@ -12,8 +12,8 @@ lowering_opts = [
     "sccp",
     # From complex control to the soup of basic blocks
     "expand-strided-metadata",
-    "lower-affine",
     "convert-linalg-to-loops",
+    "lower-affine",
     "convert-vector-to-scf",
     "scf-forall-to-parallel",
     "convert-scf-to-openmp",
