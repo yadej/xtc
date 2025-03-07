@@ -10,9 +10,6 @@ from pathlib import Path
 from functools import partial
 import numpy as np
 
-from xdsl.dialects import func as xdslfunc
-
-from mlir.dialects import arith, transform
 from mlir.dialects.transform import NamedSequenceOp
 from mlir.passmanager import PassManager
 
@@ -27,6 +24,7 @@ from ext_tools import (
     shared_lib_opts,
     exe_opts,
     runtime_libs,
+    system_libs,
     dump_file,
     mlirrunner_opts,
     objdump_bin,
@@ -74,7 +72,9 @@ class MlirCompiler:
 
     @property
     def shared_libs(self):
-        return [f"{self.mlir_install_dir}/lib/{lib}" for lib in runtime_libs]
+        return system_libs + [
+            f"{self.mlir_install_dir}/lib/{lib}" for lib in runtime_libs
+        ]
 
     @property
     def shared_path(self):

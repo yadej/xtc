@@ -64,6 +64,8 @@ runtime_libs = [
     "libmlir_async_runtime.so",
 ]
 
+system_libs = ["/usr/lib/x86_64-linux-gnu/libomp.so.5"]
+
 dump_file = "/tmp/dump"
 
 mlirrunner_opts = [
