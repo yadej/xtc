@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2024-2026 The XTC Project Authors
 #
-import os
 import ctypes
 import tempfile
 import subprocess
 import threading
 import shlex
 import logging
+from pathlib import Path
 
 __all__ = [
     "compile_runtime",
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Can be set to True for RUNTIME_DEBUG
 RUNTIME_DEBUG = False
 
-from xtc.runtime_types import DLDevice, DLDataType
+from xtc.runtimes.types.dlpack import DLDevice, DLDataType
 
 
 class _c_ascii_str:
@@ -110,7 +110,8 @@ _runtime_funcs = {
 def compile_runtime(out_dll):
     debug_opts = "-DRUNTIME_DEBUG=1" if RUNTIME_DEBUG else ""
     files = ["evaluate.c", "cndarray.c", "alloc.c", "fclock.c", "evaluate_flops.c"]
-    src_dir = f"{os.path.dirname(__file__)}/ctools"
+    top_dir = Path(__file__).parents[2]
+    src_dir = top_dir / "csrcs" / "runtimes" / "host"
     src_files = [f"{src_dir}/{file}" for file in files]
     cmd = (
         "cc --shared -O2 -march=native -fPIC "
