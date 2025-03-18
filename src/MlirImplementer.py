@@ -4,9 +4,8 @@
 #
 from abc import ABC, abstractmethod
 from typing_extensions import override
-from mlir.ir import (
-    InsertionPoint,
-)
+from typing import Tuple, Any
+from mlir.ir import InsertionPoint, OpResult
 from mlir.dialects import transform
 from xdsl.dialects import func as xdslfunc
 from mlir.dialects.transform import (
@@ -37,7 +36,7 @@ class MlirImplementer(MlirModule, ABC):
     def mlir_payload(self):
         return self.payload_name
 
-    def generate_vectorization(self, handle):
+    def generate_vectorization(self, handle: OpResult):
         if self.always_vectorize or self.needs_vectorization():
             handle = structured.VectorizeChildrenAndApplyPatternsOp(handle)
             with InsertionPoint(transform.ApplyPatternsOp(handle).patterns):
@@ -46,10 +45,11 @@ class MlirImplementer(MlirModule, ABC):
         return handle
 
     @abstractmethod
-    def needs_vectorization(self):
+    def needs_vectorization(self) -> bool:
         pass
 
     @abstractmethod
+    @override
     def check_consistency(self):
         pass
 
@@ -58,11 +58,12 @@ class MlirImplementer(MlirModule, ABC):
         pass
 
     @abstractmethod
-    def generate_unroll(self, handle):
+    def generate_unroll(self, handle: OpResult):
         pass
 
     @override
     def _implement(self):
+        assert self.named_sequence
         with (
             InsertionPoint.at_block_begin(self.named_sequence.body),
             self.mlir_context,
@@ -83,7 +84,7 @@ class MlirImplementer(MlirModule, ABC):
             transform.YieldOp([])
 
     @abstractmethod
-    def string_of_schedule(self):
+    def string_of_schedule(self) -> str:
         pass
 
     @abstractmethod
@@ -95,7 +96,7 @@ class MlirImplementer(MlirModule, ABC):
         pass
 
     @abstractmethod
-    def reference_impl(self, *operands):
+    def reference_impl(self, *operands: Tuple[Any]):
         pass
 
     def get_scheduler(self):
