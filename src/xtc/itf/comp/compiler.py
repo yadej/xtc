@@ -9,7 +9,7 @@ import xtc.itf
 
 
 class Compiler(ABC):
-    """An abstract implementation of a compiler for a given implementer and schedule.
+    """An abstract implementation of a compiler for a given backend and schedule.
 
     A Compiler takes a backend-specific implementation and schedule and generates
     an executable Module. It handles the final stage of converting the optimized
@@ -30,10 +30,10 @@ class Compiler(ABC):
 
     @property
     @abstractmethod
-    def implementer(self) -> "xtc.itf.impl.Implementer":
+    def backend(self) -> "xtc.itf.back.Backend":
         """Returns the implementer associated with this compiler.
 
         Returns:
-            The implementer this compiler generates code for
+            The backend this compiler generates code for
         """
         ...

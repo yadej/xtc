@@ -14,7 +14,7 @@ from .TVMScheduler import TVMScheduler
 from .TVMCompiler import TVMCompiler
 
 __all__ = [
-    "TVMImplementer",
+    "TVMBackend",
 ]
 
 
@@ -110,7 +110,7 @@ class TVMGraph(itf.graph.Graph):
         return self._outputs
 
 
-class TVMImplementer(itf.impl.Implementer):
+class TVMBackend(itf.back.Backend):
     def __init__(
         self,
         source_op: TVMOperation,
