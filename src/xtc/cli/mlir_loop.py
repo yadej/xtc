@@ -5,9 +5,11 @@
 #
 
 import argparse
+import re
 from pathlib import Path
+from typing import Any, Tuple
 from xdsl.dialects import func, builtin
-from xdsl.ir import Attribute, Operation
+from xdsl.ir import Operation
 
 from xtc.itf.schd.scheduler import Scheduler
 from xtc.utils.xdsl_aux import parse_xdsl_module
@@ -31,7 +33,8 @@ def main():
     assert get_scheduler
     schedulers = []
     for idx, op in enumerate(ops_to_schedule):
-        node_name = f"v{idx}"
+        parsed_id = next((k for k in op.attributes if k.startswith("__")), None)
+        node_name = parsed_id if parsed_id else f"__node{idx}__"
         sched = get_scheduler(
             op,
             node_name,
@@ -120,33 +123,103 @@ def parse_scheduler(
     if "loop.schedule" in op.attributes:
         schedule_attribute = op.attributes.get("loop.schedule")
         assert isinstance(schedule_attribute, builtin.DictionaryAttr)
-        parse_schedule(scheduler, schedule_attribute)
+        build_schedule(
+            scheduler=scheduler,
+            schedule=schedule_attribute,
+            node_name=node_name,
+        )
         remove_attribute(op, "loop.schedule")
 
     return scheduler
 
 
-def parse_schedule(scheduler: Scheduler, schedule: builtin.DictionaryAttr):
+def build_schedule(
+    scheduler: Scheduler, schedule: builtin.DictionaryAttr, node_name: str
+):
     assert isinstance(scheduler.backend, MlirNodeBackend)
 
+    dict_schedule = parse_schedule(
+        schedule=schedule, dims=scheduler.backend.dims, root=node_name
+    )
+    splits = dict_schedule["splits"]
+    tiles = dict_schedule["tiles"]
+    interchanges = dict_schedule["interchanges"]
+    vectorize = dict_schedule["vectorize"]
+    parallelize = dict_schedule["parallelize"]
+    unroll = dict_schedule["unroll"]
+
+    for interchange in interchanges:
+        scheduler.interchange(interchange)
+    for dim in splits:
+        scheduler.split(dim, splits[dim])
+    for dim in tiles:
+        scheduler.tile(dim, tiles[dim])
+    scheduler.vectorize(vectorize)
+    scheduler.parallelize(parallelize)
+    scheduler.unroll(unroll)
+    return scheduler
+
+
+def parse_schedule(
+    schedule: builtin.DictionaryAttr,
+    dims: list[str],
+    root: str,
+) -> dict[str, Any]:
+    sched = {
+        "splits": {d: {} for d in dims},
+        "tiles": {d: {} for d in dims},
+        "interchanges": [],
+        "vectorize": [],
+        "parallelize": [],
+        "unroll": {},
+    }
+    # Temporary state
     sizes: dict[str, int | None] = {}
-    interchange: list[str] = []
-    tiles: dict[str, dict[str, int]] = {d: {} for d in scheduler.backend.dims}
-    unroll: dict[str, int] = {}
-    vecto: list[str] = []
-    parallel: list[str] = []
+    previous_cut: dict[str, int | None] = {d: 0 for d in dims}
+    interchange: list[str] = [root]
+    # Processing the schedule
     for declaration, val in schedule.data.items():
+        if ":" in declaration:
+            dim_name, x, y = parse_split(declaration)
+            # The only declaration where y (the cut) is None is the
+            # last one, so it cannot be the previous one.
+            assert previous_cut[dim_name] is not None
+            # When x (the starting point of the slice), is not
+            # specified, it is the previous cut
+            if x is None:
+                x = previous_cut[dim_name]
+            assert x is not None
+            # Update the previous cut
+            previous_cut[dim_name] = y
+            # Save the cutting points of the new dimensions
+            new_dim_index = len(sched["splits"][dim_name])
+            new_dim_name = f"{root}/{dim_name}[{new_dim_index}]"
+            sched["splits"][dim_name][new_dim_name] = x
+            interchange.append(new_dim_name)
+            # Fetch the schedule associated with the new dimension
+            assert isinstance(val, builtin.DictionaryAttr)
+            next_schedule = val
+            assert next_schedule
+            inner_sched = parse_schedule(
+                schedule=next_schedule, dims=dims, root=new_dim_name
+            )
+            sched = merge_sched_dicts(sched, inner_sched)
+            continue
+
         # Tiles
         if "#" in declaration:
             dim_name, tile_size = declaration.split("#")
             loop_size = int(tile_size)
-            tile_num = len(tiles[dim_name])
-            loop_name = f"{dim_name}{tile_num}"
-            tiles[dim_name][loop_name] = loop_size
+            tile_num = len(sched["tiles"][dim_name])
+            loop_name = f"{root}/{dim_name}{tile_num}"
+            sched["tiles"][dim_name][loop_name] = loop_size
         # Initial dimensions
-        elif declaration in scheduler.backend.dims:
-            loop_name = declaration
-            loop_size = None
+        elif declaration in dims:
+            dim_name = declaration
+            loop_size = 1
+            tile_num = len(sched["tiles"][dim_name])
+            loop_name = f"{root}/{dim_name}{tile_num}"
+            sched["tiles"][dim_name][loop_name] = loop_size
         else:
             raise Exception(f"Unknown declaration: {declaration}")
         sizes[loop_name] = loop_size
@@ -165,11 +238,11 @@ def parse_schedule(scheduler: Scheduler, schedule: builtin.DictionaryAttr):
                             unroll_factor = param.value.data
                         else:
                             raise Exception(f"Unknown unroll factor for {loop_name}")
-                        unroll[loop_name] = unroll_factor
+                        sched["unroll"][loop_name] = unroll_factor
                     case "vectorize":
-                        vecto.append(loop_name)
+                        sched["vectorize"].append(loop_name)
                     case "parallelize":
-                        parallel.append(loop_name)
+                        sched["parallelize"].append(loop_name)
                     case _:
                         raise Exception(
                             f"Unknown annotation on {loop_name}: {annotation}"
@@ -178,14 +251,43 @@ def parse_schedule(scheduler: Scheduler, schedule: builtin.DictionaryAttr):
             pass
         else:
             raise Exception(f"The annotation on {loop_name} must be a dict")
+    sched["interchanges"] = [interchange] + sched["interchanges"]
+    return sched
 
-    for dim in tiles:
-        scheduler.tile(dim, tiles[dim])
-    scheduler.interchange(interchange)
-    scheduler.vectorize(vecto)
-    scheduler.parallelize(parallel)
-    scheduler.unroll(unroll)
-    return scheduler
+
+def merge_sched_dicts(
+    sched1: dict[str, Any],
+    sched2: dict[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "splits": sched1["splits"],  # tmp
+        "tiles": sched1["tiles"],  # tmp
+        "interchanges": sched1["interchanges"] + sched2["interchanges"],
+        "vectorize": list(set(sched1["vectorize"] + sched2["vectorize"])),
+        "parallelize": list(set(sched1["parallelize"] + sched2["parallelize"])),
+        "unroll": sched1["unroll"] | sched2["unroll"],
+    }
+
+    for d in sched2["splits"]:
+        for t in sched2["splits"][d]:
+            result["splits"][d][t] = sched2["splits"][d][t]
+
+    for d in sched2["tiles"]:
+        for t in sched2["tiles"][d]:
+            result["tiles"][d][t] = sched2["tiles"][d][t]
+    return result
+
+
+def parse_split(s: str) -> Tuple[str, int | None, int | None]:
+    pattern = r"^(.*)\[(?:(\d*)?):(?:(\d*)?)\]$"
+    match = re.match(pattern, s)
+    if not match:
+        raise ValueError("Wrong format.")
+
+    prefix, x_str, y_str = match.groups()
+    x = int(x_str) if x_str else None
+    y = int(y_str) if y_str else None
+    return prefix, x, y
 
 
 def parse_scheduler_legacy(
@@ -241,8 +343,6 @@ def parse_mlir_node_backend(
     concluding_passes: list[str],
     no_alias: bool,
 ) -> MlirNodeBackend:
-    # ID
-    parsed_id = next((k for k in op.attributes if k.startswith("__")), None)
     # Dims
     dims = get_string_list_attribute(op, "loop.dims")
     if not dims:
@@ -259,7 +359,7 @@ def parse_mlir_node_backend(
         concluding_passes=concluding_passes,
         loop_stamps=loop_stamps,
         no_alias=no_alias,
-        id=parsed_id,
+        id=node_name,
     )
 
 
