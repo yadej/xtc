@@ -1,4 +1,4 @@
-// RUN: mlir-loop --old-syntax %s --no-alias --evaluate 2>&1 | filecheck %s
+// RUN: mlir-loop-legacy  %s --no-alias --evaluate 2>&1 | filecheck %s
 
 func.func @myfun(
   %A: memref<256x512xf32>,
