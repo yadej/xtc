@@ -8,13 +8,23 @@ import re
 from xtc.itf.schd.scheduler import Scheduler
 
 
+def descript_scheduler(
+    scheduler: Scheduler,
+    node_name: str,
+    abstract_axis: list[str],
+    spec: dict[str, dict],
+):
+    descript = Descript(scheduler=scheduler, abstract_axis=abstract_axis)
+    descript.apply(node_name=node_name, spec=spec)
+
+
 @dataclass(frozen=True)
 class Descript:
     scheduler: Scheduler
-    initial_axis: list[str]
+    abstract_axis: list[str]
 
     def apply(self, node_name: str, spec: dict[str, dict]):
-        flattened_schedule = self.flatten_schedule(root=node_name, spec=spec)
+        flattened_schedule = self._flatten_schedule(root=node_name, spec=spec)
 
         for interchange in flattened_schedule["interchanges"]:
             self.scheduler.interchange(interchange)
@@ -26,14 +36,14 @@ class Descript:
         self.scheduler.parallelize(flattened_schedule["parallelize"])
         self.scheduler.unroll(flattened_schedule["unroll"])
 
-    def flatten_schedule(
+    def _flatten_schedule(
         self,
         root: str,
         spec: dict[str, dict],
     ) -> dict[str, Any]:
         sched = {
-            "splits": {a: {} for a in self.initial_axis},
-            "tiles": {a: {} for a in self.initial_axis},
+            "splits": {a: {} for a in self.abstract_axis},
+            "tiles": {a: {} for a in self.abstract_axis},
             "interchanges": [],
             "vectorize": [],
             "parallelize": [],
@@ -41,7 +51,7 @@ class Descript:
         }
         # State of the schedule
         sizes: dict[str, int | None] = {}
-        previous_cut: dict[str, int | None] = {a: 0 for a in self.initial_axis}
+        previous_cut: dict[str, int | None] = {a: 0 for a in self.abstract_axis}
         interchange: list[str] = [root]
         # Processing the schedule
         for declaration, val in spec.items():
@@ -66,7 +76,7 @@ class Descript:
                 # Fetch the schedule associated with the new dimension
                 next_schedule = val
                 assert isinstance(next_schedule, dict)
-                inner_sched = self.flatten_schedule(
+                inner_sched = self._flatten_schedule(
                     spec=next_schedule, root=new_dim_name
                 )
                 sched = merge_flat_schedules(sched, inner_sched)
@@ -81,7 +91,7 @@ class Descript:
                 sched["tiles"][axis_name][loop_name] = loop_size
 
             # Initial dimensions
-            elif declaration in self.initial_axis:
+            elif declaration in self.abstract_axis:
                 axis_name = declaration
                 loop_size = 1
                 tile_num = len(sched["tiles"][axis_name])

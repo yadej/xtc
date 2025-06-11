@@ -11,7 +11,7 @@ from xdsl.dialects import func, builtin
 from xdsl.ir import Operation
 
 from xtc.itf.schd.scheduler import Scheduler
-from xtc.schedules.descript import Descript
+from xtc.schedules.descript import descript_scheduler
 from xtc.utils.xdsl_aux import parse_xdsl_module
 from xtc.backends.mlir.MlirNodeBackend import MlirNodeBackend
 from xtc.backends.mlir.MlirGraphBackend import MlirGraphBackend
@@ -130,8 +130,12 @@ def build_node_scheduler(
         schedule_attribute = op.attributes.get("loop.schedule")
         assert isinstance(schedule_attribute, builtin.DictionaryAttr)
         normal_schedule = normalize_schedule(schedule_attribute)
-        descript = Descript(scheduler=scheduler, initial_axis=scheduler.backend.dims)
-        descript.apply(node_name=node_name, spec=normal_schedule)
+        descript_scheduler(
+            scheduler=scheduler,
+            node_name=node_name,
+            abstract_axis=scheduler.backend.dims,
+            spec=normal_schedule,
+        )
         op.attributes.pop("loop.schedule", None)
 
     return scheduler
