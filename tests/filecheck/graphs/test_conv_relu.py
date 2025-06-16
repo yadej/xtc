@@ -37,10 +37,10 @@ print(f"Outputs: {outs}")
 # CHECK-NEXT:    outputs:
 # CHECK-NEXT:    - %4
 # CHECK-NEXT:    nodes:
-# CHECK-NEXT:      %2: pad2d(%0, padding=1)
-# CHECK-NEXT:      %3: conv2d(%2, %1, stride=(2, 2))
-# CHECK-NEXT:      %4: relu(%3, threshold=0.1)
+# CHECK-NEXT:    - %2: pad2d(%0, padding=1)
+# CHECK-NEXT:    - %3: conv2d(%2, %1, stride=(2, 2))
+# CHECK-NEXT:    - %4: relu(%3, threshold=0.1)
 # CHECK-NEXT:  
-# CHECK-NEXT:  [TensorType(shape=(2, 2, 2, 8), dtype=float32)]
-# CHECK-NEXT:  Inputs: [Tensor(type=TensorType(shape=(2, 4, 4, 3), dtype=float32), data=-4.0 -3.0 -2.0 -1.0...-2.0 -1.0 0.0 1.0), Tensor(type=TensorType(shape=(3, 3, 3, 8), dtype=float32), data=-4.0 -3.0 -2.0 -1.0...1.0 2.0 3.0 4.0)]
-# CHECK-NEXT:  Outputs: [Tensor(type=TensorType(shape=(2, 2, 2, 8), dtype=float32), data=0.1 0.1 0.1 10.0...9.0 0.1 9.0 9.0)]
+# CHECK-NEXT:  [2x2x2x8xfloat32]
+# CHECK-NEXT:  Inputs: [Tensor(type=2x4x4x3xfloat32, data=-4.0 -3.0 -2.0 -1.0...-2.0 -1.0 0.0 1.0), Tensor(type=3x3x3x8xfloat32, data=-4.0 -3.0 -2.0 -1.0...1.0 2.0 3.0 4.0)]
+# CHECK-NEXT:  Outputs: [Tensor(type=2x2x2x8xfloat32, data=0.1 0.1 0.1 10.0...9.0 0.1 9.0 9.0)]

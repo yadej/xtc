@@ -95,7 +95,12 @@ class XTCTensorType(TensorType):
 
     @override
     def __repr__(self) -> str:
-        return f"TensorType(shape={self._shape}, dtype={self._dtype})"
+        if self._shape is None:
+            dims = "??"
+        else:
+            dims = "x".join([str(d if d else "?") for d in self._shape])
+        dtype = self._dtype if self._dtype else "?"
+        return f"{dims}x{dtype}"
 
     @override
     def __eq__(self, other: object) -> bool:

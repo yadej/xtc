@@ -42,21 +42,21 @@ print(f"Outputs: {outs}")
 # CHECK:       graph:
 # CHECK-NEXT:    name: mlp4
 # CHECK-NEXT:    inputs:
-# CHECK-NEXT:    - %0
-# CHECK-NEXT:    - %1
-# CHECK-NEXT:    - %2
-# CHECK-NEXT:    - %3
-# CHECK-NEXT:    - %4
+# CHECK-NEXT:    - %0 : 1x3072xfloat32
+# CHECK-NEXT:    - %1 : 3072x512xfloat32
+# CHECK-NEXT:    - %2 : 512x256xfloat32
+# CHECK-NEXT:    - %3 : 256x128xfloat32
+# CHECK-NEXT:    - %4 : 128x10xfloat32
 # CHECK-NEXT:    outputs:
-# CHECK-NEXT:    - %11
+# CHECK-NEXT:    - %11 : 1x10xfloat32
 # CHECK-NEXT:    nodes:
-# CHECK-NEXT:      %5: matmul(%0, %1)
-# CHECK-NEXT:      %6: relu(%5)
-# CHECK-NEXT:      %7: matmul(%6, %2)
-# CHECK-NEXT:      %8: relu(%7)
-# CHECK-NEXT:      %9: matmul(%8, %3)
-# CHECK-NEXT:      %10: relu(%9)
-# CHECK-NEXT:      %11: matmul(%10, %4)
+# CHECK-NEXT:    - %5: matmul(%0, %1) : [1x3072xfloat32, 3072x512xfloat32] -> [1x512xfloat32]
+# CHECK-NEXT:    - %6: relu(%5) : [1x512xfloat32] -> [1x512xfloat32]
+# CHECK-NEXT:    - %7: matmul(%6, %2) : [1x512xfloat32, 512x256xfloat32] -> [1x256xfloat32]
+# CHECK-NEXT:    - %8: relu(%7) : [1x256xfloat32] -> [1x256xfloat32]
+# CHECK-NEXT:    - %9: matmul(%8, %3) : [1x256xfloat32, 256x128xfloat32] -> [1x128xfloat32]
+# CHECK-NEXT:    - %10: relu(%9) : [1x128xfloat32] -> [1x128xfloat32]
+# CHECK-NEXT:    - %11: matmul(%10, %4) : [1x128xfloat32, 128x10xfloat32] -> [1x10xfloat32]
 # CHECK-NEXT:  
-# CHECK-NEXT:  Inputs: [Tensor(type=TensorType(shape=(1, 3072), dtype=float32), data=-4.0 -3.0 -2.0 -1.0...4.0 -4.0 -3.0 -2.0), Tensor(type=TensorType(shape=(3072, 512), dtype=float32), data=-4.0 -3.0 -2.0 -1.0...-2.0 -1.0 0.0 1.0), Tensor(type=TensorType(shape=(512, 256), dtype=float32), data=-4.0 -3.0 -2.0 -1.0...-3.0 -2.0 -1.0 0.0), Tensor(type=TensorType(shape=(256, 128), dtype=float32), data=-4.0 -3.0 -2.0 -1.0...0.0 1.0 2.0 3.0), Tensor(type=TensorType(shape=(128, 10), dtype=float32), data=-4.0 -3.0 -2.0 -1.0...3.0 4.0 -4.0 -3.0)]
-# CHECK-NEXT:  Outputs: [Tensor(type=TensorType(shape=(1, 10), dtype=float32), data=35636482000.0 52931383000.0 10267247000.0 -26914288000.0...-16248222000.0 1046679500.0 18341579000.0 35636470000.0)]
+# CHECK-NEXT:  Inputs: [Tensor(type=1x3072xfloat32, data=-4.0 -3.0 -2.0 -1.0...4.0 -4.0 -3.0 -2.0), Tensor(type=3072x512xfloat32, data=-4.0 -3.0 -2.0 -1.0...-2.0 -1.0 0.0 1.0), Tensor(type=512x256xfloat32, data=-4.0 -3.0 -2.0 -1.0...-3.0 -2.0 -1.0 0.0), Tensor(type=256x128xfloat32, data=-4.0 -3.0 -2.0 -1.0...0.0 1.0 2.0 3.0), Tensor(type=128x10xfloat32, data=-4.0 -3.0 -2.0 -1.0...3.0 4.0 -4.0 -3.0)]
+# CHECK-NEXT:  Outputs: [Tensor(type=1x10xfloat32, data=35636482000.0 52931383000.0 10267247000.0 -26914288000.0...-16248222000.0 1046679500.0 18341579000.0 35636470000.0)]

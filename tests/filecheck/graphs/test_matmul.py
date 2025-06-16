@@ -35,8 +35,8 @@ print(f"Outputs: {outs}")
 # CHECK-NEXT:    outputs:
 # CHECK-NEXT:    - %2
 # CHECK-NEXT:    nodes:
-# CHECK-NEXT:      %2: matmul(%0, %1)
+# CHECK-NEXT:    - %2: matmul(%0, %1)
 # CHECK-NEXT:  
-# CHECK-NEXT:  [TensorType(shape=(5, 4), dtype=float32)]
-# CHECK-NEXT:  Inputs: [Tensor(type=TensorType(shape=(5, 3), dtype=float32), data=-4.0 -3.0 -2.0 -1.0...-2.0 -1.0 0.0 1.0), Tensor(type=TensorType(shape=(3, 4), dtype=float32), data=-4.0 -3.0 -2.0 -1.0...4.0 -4.0 -3.0 -2.0)]
-# CHECK-NEXT:  Outputs: [Tensor(type=TensorType(shape=(5, 4), dtype=float32), data=8.0 17.0 8.0 -1.0...8.0 -1.0 -1.0 -1.0)]
+# CHECK-NEXT:  [5x4xfloat32]
+# CHECK-NEXT:  Inputs: [Tensor(type=5x3xfloat32, data=-4.0 -3.0 -2.0 -1.0...-2.0 -1.0 0.0 1.0), Tensor(type=3x4xfloat32, data=-4.0 -3.0 -2.0 -1.0...4.0 -4.0 -3.0 -2.0)]
+# CHECK-NEXT:  Outputs: [Tensor(type=5x4xfloat32, data=8.0 17.0 8.0 -1.0...8.0 -1.0 -1.0 -1.0)]

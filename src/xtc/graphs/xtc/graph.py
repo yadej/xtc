@@ -31,6 +31,8 @@ class XTCGraph(Graph):
         self._outputs: OutputsType = []
         self._nodes: NodesType = []
         self._name = name
+        self._inputs_types: list[XTCTensorType] | None = None
+        self._outputs_types: list[XTCTensorType] | None = None
 
     @property
     @override
@@ -62,6 +64,16 @@ class XTCGraph(Graph):
     def outputs_nodes(self) -> Sequence["XTCNode"]:
         return self._outputs
 
+    @property
+    @override
+    def inputs_types(self) -> Sequence[XTCTensorType] | None:
+        return self._inputs_types
+
+    @property
+    @override
+    def outputs_types(self) -> Sequence[XTCTensorType] | None:
+        return self._outputs_types
+
     def add_nodes(self, nodes: NodesType) -> None:
         self._nodes.extend(nodes)
 
@@ -79,16 +91,19 @@ class XTCGraph(Graph):
             f"forward types inputs size mismatch: {len(inputs_types)} != {len(self._inputs)}"
         )
         nodes = XTCGraphUtils.get_nodes_topological(self._nodes)
+        self._inputs_types = [
+            cast(XTCTensorType, inp_type) for inp_type in inputs_types
+        ]
         outputs_map = {
             node_uid: cast(XTCTensorType, inp_type)
-            for node_uid, inp_type in zip(self.inputs, inputs_types)
+            for node_uid, inp_type in zip(self.inputs, self._inputs_types)
         }
         for node in nodes:
             inp_types = [outputs_map[node_uid] for node_uid in node.inputs]
             out_types = node.forward_types(inp_types)
             outputs_map[node.uid] = out_types[0]
-        outputs_types = [outputs_map[node_uid] for node_uid in self.outputs]
-        return outputs_types
+        self._outputs_types = [outputs_map[node_uid] for node_uid in self.outputs]
+        return self._outputs_types
 
     @override
     def forward(self, inputs: Sequence[Tensor]) -> Sequence[XTCTensor]:
@@ -116,14 +131,18 @@ class XTCGraph(Graph):
             graph_str += f"  name: {self._name}\n"
         if len(self._inputs) > 0:
             graph_str += "  inputs:\n"
-            for node_uid in self.inputs:
-                graph_str += f"  - {node_uid}\n"
+            for idx, node_uid in enumerate(self.inputs):
+                inp_type = f" : {self._inputs_types[idx]}" if self._inputs_types else ""
+                graph_str += f"  - {node_uid}{inp_type}\n"
         else:
             graph_str += "  inputs: []\n"
         if len(self._outputs) > 0:
             graph_str += "  outputs:\n"
-            for node_uid in self.outputs:
-                graph_str += f"  - {node_uid}\n"
+            for idx, node_uid in enumerate(self.outputs):
+                out_type = (
+                    f" : {self._outputs_types[idx]}" if self._outputs_types else ""
+                )
+                graph_str += f"  - {node_uid}{out_type}\n"
         else:
             graph_str += "  outputs: []\n"
         if len(self._nodes) > 0:

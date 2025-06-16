@@ -65,6 +65,31 @@ class Node(ABC):
 
     @property
     @abstractmethod
+    def inputs_types(self) -> Sequence[TensorType] | None:
+        """Returns the list of inputs tensor types
+
+        Returns None when no input tensor type was given
+        and forward_types was not called.
+
+        Returns:
+            List of input tensor types or None if undef
+        """
+        ...
+
+    @property
+    def outputs_types(self) -> Sequence[TensorType] | None:
+        """Returns the list of outputs tensor types
+
+        Returns None when no input tensor type was given
+        and forward_types was not called.
+
+        Returns:
+            List of output tensor types or None if undef
+        """
+        ...
+
+    @property
+    @abstractmethod
     def preds(self) -> Sequence[str]:
         """Returns the list of predecessor nodes uids.
 

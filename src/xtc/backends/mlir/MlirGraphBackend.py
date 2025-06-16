@@ -66,22 +66,25 @@ class MlirGraphBackend(MlirBackend):
         always_vectorize: bool = True,
         no_alias: bool = False,
     ) -> tuple[xdslFuncOp, dict[str, MlirNodeBackend]]:
+        inputs_types = graph.inputs_types
+        outputs_types = graph.outputs_types
+        assert inputs_types is not None and outputs_types is not None, (
+            f"graph types must be forwarded for graph {graph.name}"
+        )
         operations = [
             MlirOperation.from_operation(node.operation, name=node.name)
             for node in graph.nodes.values()
         ]
-        inputs_types = [
-            cast(XTCTensorExpr, node._expr).type for node in graph.inputs_nodes
-        ]
         blocks_and_attrs = [oper.generate() for oper in operations]
         blocks_attrs = [attrs for _, attrs in blocks_and_attrs]
         region = xdslRegion([block for block, _ in blocks_and_attrs])  # type: ignore # mypy issue with dataclass
-        ops_types = [
-            self._xdsl_type_from_tensortype(input_type) for input_type in inputs_types
+        params_types = [
+            self._xdsl_type_from_tensortype(cast(XTCTensorType, tensor_type))
+            for tensor_type in [*inputs_types, *outputs_types]
         ]
         payload = xdslFuncOp.from_region(
             name=graph.name,
-            input_types=ops_types,
+            input_types=params_types,
             return_types=[],
             region=region,
         )

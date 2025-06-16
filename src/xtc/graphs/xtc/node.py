@@ -34,8 +34,8 @@ class XTCNode(Node):
     def __init__(self, expr: "XTCExpr", name: str | None = None) -> None:
         # TODO: assume a single node output for now,
         # i.e. a node is equivalent to it's first output and to the expression
-        self._inputs_types: Sequence[XTCTensorType] | None = None
-        self._outputs_types: Sequence[XTCTensorType] | None = None
+        self._inputs_types: list[XTCTensorType] | None = None
+        self._outputs_types: list[XTCTensorType] | None = None
         self._expr = expr
         self._node_uid_map[self.uid] = self
         if name is None:
@@ -85,6 +85,16 @@ class XTCNode(Node):
     def preds_nodes(self) -> Sequence["XTCNode"]:
         return [self._get_node(node_uid) for node_uid in self.preds]
 
+    @property
+    @override
+    def inputs_types(self) -> Sequence[XTCTensorType] | None:
+        return self._inputs_types
+
+    @property
+    @override
+    def outputs_types(self) -> Sequence[XTCTensorType] | None:
+        return self._outputs_types
+
     @override
     def forward_types(
         self, inputs_types: Sequence[TensorType]
@@ -98,7 +108,7 @@ class XTCNode(Node):
         else:
             assert isinstance(self._expr, XTCOpExpr)
             outputs_types = self._expr.forward_types(inputs_types)
-        self._outputs_types = outputs_types
+        self._outputs_types = list(outputs_types)
         return outputs_types
 
     @override
@@ -143,4 +153,7 @@ class XTCNode(Node):
         attrs_str = ", ".join([f"{k} = {repr(v)}" for k, v in attrs.items()])
         if attrs_str:
             attrs_str = f" {{{attrs_str}}}"
-        return str(self._expr).split("=", 1)[1].strip() + attrs_str
+        type_str = ""
+        if self.inputs_types is not None and self.outputs_types is not None:
+            type_str = f" : {self.inputs_types} -> {self.outputs_types}"
+        return str(self._expr).split("=", 1)[1].strip() + attrs_str + type_str

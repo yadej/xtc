@@ -25,8 +25,8 @@ print(rb.graph)
 # CHECK-NEXT:    outputs:
 # CHECK-NEXT:    - %3
 # CHECK-NEXT:    nodes:
-# CHECK-NEXT:      %2: matmul(%0, %1)
-# CHECK-NEXT:      %3: relu(%2)
+# CHECK-NEXT:    - %2: matmul(%0, %1)
+# CHECK-NEXT:    - %3: relu(%2)
 # CHECK-NEXT:  
 # CHECK-NEXT:  graph:
 # CHECK-NEXT:    name: matmul
@@ -36,7 +36,7 @@ print(rb.graph)
 # CHECK-NEXT:    outputs:
 # CHECK-NEXT:    - %2
 # CHECK-NEXT:    nodes:
-# CHECK-NEXT:      %2: matmul(%0, %1)
+# CHECK-NEXT:    - %2: matmul(%0, %1)
 # CHECK-NEXT:  
 # CHECK-NEXT:  graph:
 # CHECK-NEXT:    name: relu
@@ -45,4 +45,4 @@ print(rb.graph)
 # CHECK-NEXT:    outputs:
 # CHECK-NEXT:    - %3
 # CHECK-NEXT:    nodes:
-# CHECK-NEXT:      %3: relu(%2)
+# CHECK-NEXT:    - %3: relu(%2)
