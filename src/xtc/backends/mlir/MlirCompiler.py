@@ -4,27 +4,11 @@
 #
 from typing_extensions import override
 from typing import Any, cast
-import subprocess
 import sys
 import os
 import tempfile
 import shutil
 from pathlib import Path
-
-from xtc.utils.ext_tools import (
-    mlirtranslate_opts,
-    llc_opts,
-    opt_opts,
-    shared_lib_opts,
-    exe_opts,
-    runtime_libs,
-    system_libs,
-    objdump_bin,
-    objdump_arm_bin,
-    cc_bin,
-    objdump_opts,
-    objdump_color_opts,
-)
 
 from xtc.targets.host import HostModule
 
@@ -38,25 +22,40 @@ from xtc.backends.mlir.MlirConfig import MlirConfig
 from xtc.backends.mlir.MlirCompilerPasses import (
     MlirProgramInsertTransformPass,
     MlirProgramApplyTransformPass,
-    MlirProgramToLLVMDialectPass,
 )
+
+import xtc.backends.mlir.MlirTarget as mlir_target
 
 
 class MlirCompiler(itf.comp.Compiler):
     def __init__(
         self,
         backend: "backend.MlirBackend",
+        target: "mlir_target.MlirTarget|None" = None,
         **kwargs: Any,
     ):
         self._backend = backend
         kwargs["bare_ptr"] = True  # Not supported for now
         self.dump_file = kwargs.pop("dump_file", None)
         self._config = MlirConfig(**kwargs)
+        if target is None:
+            # FIXME mypy doesn't understand that MlirLLVMTarget is derived from MlirTarget
+            self._target = cast(
+                mlir_target.MlirTarget, mlir_target.MlirLLVMTarget(self._config)
+            )
+        else:
+            self._target = target
+        assert self._target is not None
+        self._compiler_kwargs = kwargs
 
     @property
     @override
     def backend(self) -> itf.back.Backend:
         return self._backend
+
+    @property
+    def target(self) -> mlir_target.MlirTarget:
+        return self._target
 
     @override
     def compile(
@@ -76,6 +75,7 @@ class MlirCompiler(itf.comp.Compiler):
             concluding_passes=self._backend.concluding_passes,
             always_vectorize=self._backend.always_vectorize,
             config=self._config,
+            target=self._target,
             dump_file=self.dump_file,
         )
         assert compiler.dump_file is not None
@@ -111,70 +111,16 @@ class MlirProgramCompiler:
     def __init__(
         self,
         config: MlirConfig,
+        target: mlir_target.MlirTarget,
         mlir_program: RawMlirProgram,
         mlir_schedule: MlirSchedule | None = None,
         **kwargs: Any,
     ):
         self._mlir_program = mlir_program
         self._mlir_schedule = mlir_schedule
+        self._target = target
         self._config = config
         self.dump_file = kwargs.get("dump_file")
-
-    @property
-    def cmd_cc(self):
-        return [cc_bin]
-
-    @property
-    def cmd_opt(self):
-        opt = [f"{self._config.mlir_install_dir}/bin/opt"]
-        return (
-            opt
-            + opt_opts
-            + [f"-march={self._config.arch}", f"--mcpu={self._config.cpu}"]
-        )
-
-    @property
-    def cmd_llc(self):
-        llc = [f"{self._config.mlir_install_dir}/bin/llc"]
-        if self._config.arch == "native":
-            llc_arch = [f"--mcpu={self._config.cpu}"]
-        else:
-            llc_arch = [f"-march={self._config.arch}", f"--mcpu={self._config.cpu}"]
-        return llc + llc_opts + llc_arch
-
-    @property
-    def cmd_mlirtranslate(self):
-        return [
-            f"{self._config.mlir_install_dir}/bin/mlir-translate"
-        ] + mlirtranslate_opts
-
-    @property
-    def shared_libs(self):
-        return system_libs + [
-            f"{self._config.mlir_install_dir}/lib/{lib}" for lib in runtime_libs
-        ]
-
-    @property
-    def shared_path(self):
-        return [f"-Wl,--rpath={self._config.mlir_install_dir}/lib/"]
-
-    @property
-    def disassemble_option(self):
-        if not self._config.to_disassemble:
-            return "--disassemble"
-        else:
-            return f"--disassemble={self._config.to_disassemble}"
-
-    def build_disassemble_extra_opts(
-        self,
-        obj_file: str,
-    ) -> list[str]:
-        disassemble_extra_opts = [obj_file]
-        if self._config.visualize_jumps:
-            disassemble_extra_opts += ["--visualize-jumps"]
-        if self._config.color:
-            disassemble_extra_opts += objdump_color_opts
-        return disassemble_extra_opts
 
     def dump_ir(self, title: str):
         print(f"// -----// {title} //----- //", file=sys.stderr)
@@ -199,48 +145,6 @@ class MlirProgramCompiler:
         apply_transform_pass.run()
         if self._config.print_transformed_ir:
             self.dump_ir("IR Dump After transform")
-
-    def mlir_to_llvm_pass(self) -> None:
-        to_llvm_pass = MlirProgramToLLVMDialectPass(
-            mlir_program=self._mlir_program,
-        )
-        to_llvm_pass.run()
-        if self._config.print_lowered_ir:
-            self.dump_ir("IR Dump After MLIR Opt")
-
-    def disassemble(
-        self,
-        obj_file: str,
-    ) -> subprocess.CompletedProcess:
-        disassemble_extra_opts = self.build_disassemble_extra_opts(obj_file=obj_file)
-        symbol = [f"{self.disassemble_option}"]
-        objdump = objdump_arm_bin if self._config.arch == "aarch64" else objdump_bin
-        disassemble_cmd = [objdump] + objdump_opts + symbol + disassemble_extra_opts
-        dis_process = self.execute_command(cmd=disassemble_cmd, pipe_stdoutput=False)
-        return dis_process
-
-    def execute_command(
-        self,
-        cmd: list[str],
-        input_pipe: str | None = None,
-        pipe_stdoutput: bool = True,
-    ) -> subprocess.CompletedProcess:
-        pretty_cmd = "| " if input_pipe else ""
-        pretty_cmd += " ".join(cmd)
-        if self._config.debug:
-            print(f"> exec: {pretty_cmd}", file=sys.stderr)
-
-        if input_pipe and pipe_stdoutput:
-            result = subprocess.run(
-                cmd, input=input_pipe, stdout=subprocess.PIPE, text=True
-            )
-        elif input_pipe and not pipe_stdoutput:
-            result = subprocess.run(cmd, input=input_pipe, text=True)
-        elif not input_pipe and pipe_stdoutput:
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
-        else:
-            result = subprocess.run(cmd, text=True)
-        return result
 
     def _save_temp(self, fname: str, content: Any) -> None:
         if not self._config.save_temps:
@@ -275,7 +179,6 @@ class MlirProgramCompiler:
         src_ir_dump_file = f"{dump_base}.mlir"
         mlir_btrn_dump_file = f"{dump_base}.before_trn.mlir"
         mlir_atrn_dump_file = f"{dump_base}.after_trn.mlir"
-        mlir_llvm_dump_file = f"{dump_base}.llvm.mlir"
 
         save_temp(src_ir_dump_file, self._mlir_program.mlir_module)
 
@@ -285,66 +188,4 @@ class MlirProgramCompiler:
         self.mlir_apply_transform_pass()
         save_temp(mlir_atrn_dump_file, self._mlir_program.mlir_module)
 
-        self.mlir_to_llvm_pass()
-        save_temp(mlir_llvm_dump_file, self._mlir_program.mlir_module)
-
-        translate_cmd = self.cmd_mlirtranslate + ["-o", ir_dump_file]
-        llvmir_process = self.execute_command(
-            cmd=translate_cmd,
-            input_pipe=str(self._mlir_program.mlir_module),
-        )
-        assert llvmir_process.returncode == 0
-
-        opt_pic = ["--relocation-model=pic"] if self._config.shared_lib else []
-        opt_cmd = self.cmd_opt + opt_pic + [ir_dump_file, "-o", bc_dump_file]
-        opt_process = self.execute_command(cmd=opt_cmd)
-        assert opt_process.returncode == 0
-
-        llc_cmd = self.cmd_llc + opt_pic + [bc_dump_file, "-o", obj_dump_file]
-        bc_process = self.execute_command(cmd=llc_cmd)
-        assert bc_process.returncode == 0
-
-        if self._config.print_assembly:
-            disassemble_process = self.disassemble(obj_file=obj_dump_file)
-            assert disassemble_process.returncode == 0
-
-        payload_objs = [obj_dump_file, *self.shared_libs]
-        payload_path = [*self.shared_path]
-        if self._config.shared_lib:
-            shared_cmd = [
-                *self.cmd_cc,
-                *shared_lib_opts,
-                obj_dump_file,
-                "-o",
-                so_dump_file,
-                *self.shared_libs,
-                *self.shared_path,
-            ]
-            shlib_process = self.execute_command(cmd=shared_cmd)
-            assert shlib_process.returncode == 0
-
-            payload_objs = [so_dump_file]
-            payload_path = ["-Wl,--rpath=${ORIGIN}"]
-
-        if self._config.executable:
-            exe_cmd = [
-                *self.cmd_cc,
-                *exe_opts,
-                exe_c_file,
-                "-o",
-                exe_dump_file,
-                *payload_objs,
-                *payload_path,
-            ]
-            with open(exe_c_file, "w") as outf:
-                outf.write("extern void entry(void); int main() { entry(); return 0; }")
-            exe_process = self.execute_command(cmd=exe_cmd)
-            assert exe_process.returncode == 0
-
-        if not self._config.save_temps:
-            Path(ir_dump_file).unlink(missing_ok=True)
-            Path(bc_dump_file).unlink(missing_ok=True)
-            Path(obj_dump_file).unlink(missing_ok=True)
-            Path(exe_c_file).unlink(missing_ok=True)
-        if temp_dir is not None:
-            shutil.rmtree(temp_dir)
+        self._target.generate_code_for_target(self._mlir_program, dump_file=dump_file)
