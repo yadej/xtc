@@ -821,6 +821,34 @@ def full_ttile_algorithm(
     reuse_loop_min: int,
     nthread: Optional[int] = None,
 ) -> Optional[List[Atom]]:
+    """
+    Main function for the Ttile scheme selection algorithm
+
+    Inputs:
+    [Problem specification]
+    - ld_mickern_info = List of microkernel information we wish to use
+    - dprob_sizes = problem size
+    - machine = target architecture (include available vectorization info and cache sizes)
+    - comp = computation (include nature of the computation + size of the element)
+    - nthread = None / the number of threads if we want to trigger the parallelism
+
+    [Dimension specification]
+    - vector_dim = vectorization dimension
+    - lambda_dim = dimension along which we will combine microkernels
+    - reuse_dim = dimension along which we will stream the microkernel
+    - lparallel_dim = dimensions that can be used to parallelize (on the outermost loops)
+    - loutput_array_name = list of arrays reused during the streaming of the microkernel (for Hoist)
+
+    [Parameters of the search strategy]
+    - threshold_mickern_perf_ratio = ratio to the best mickern perf you want for your microkernels
+    - unroll_order = unroll order of the microkernel to be used
+    - reuse_loop_min = minimal value of the reuse loop above the microkernel. By default 32
+
+    Output:
+    - If possible (depending on available microkernels and parameters to the algo), output a scheme
+      from the Ttile search space, with only divisible tile sizes ("T/U/Tparal" atoms).
+    """
+
     # Load the microkernel infos and select the good ones
     (machine_name, computation_name, ld_mickern_info) = load_microkernel_info(
         filename_mickern_info
@@ -1073,6 +1101,31 @@ def ttile_partial_tile_algorithm(
     reuse_loop_min: int,
     nthread: Optional[int] = None,
 ) -> Optional[List[Atom]]:
+    """
+    Ttile scheme selection algorithm, based on microkernels and partial tiles.
+      The only divisibility constraint of a tile size is in respect to its microkernel size
+        (!= the tile size of its previous loop level)
+      Note that lambda is not supported with partial tiles right now, so the microkernel
+        strategy must be a single microkernel.
+
+    Inputs:
+     - filename_mickern_info: path where the microkernel database are stored
+     - dprob_sizes : problem sizes
+     - machine: targeted architecture
+     - comp : computation being performed
+     - loutput_array_name : list of output arrays of the computation
+
+    [Options specific to the algorithms]
+     - threshold_mickern_perf_ratio : from where are we considering microkernels?
+     - unroll_order : unroll order in the microkernels
+     - reuse_loop_min : minimum number of iteration of the reuse loop above the microkernel
+     - nthread: either None if sequential, or the number of thread we wish to use for parallelisation
+
+    Output:
+     - If possible (depending on the available microkernels and how constraining are the option),
+       output a (random) scheme in the Ttile search space, that uses partial tiles.
+    """
+
     assert lambda_dim == None
 
     # Load the microkernel infos and select the good ones

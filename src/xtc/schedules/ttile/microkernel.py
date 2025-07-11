@@ -341,6 +341,19 @@ def _get_repetition_dim(comp: Computation) -> str:
 def launch_microkernel_testing(
     machine: Archi, comp: Computation, mickern: Microkernel_summary, backend: str
 ) -> float:
+    """
+    Launch the execution of a single microkernel in "ideal" situation
+
+    Inputs:
+    - machine : the architecture we are targeting
+    - comp : the computation being run
+    - mickern : the microkernel to be tested
+    - backend : "mlir" or "tvm", the backend being use to measure the performance
+
+    Output:
+    - peak_perf : an measure of the microkernel run in isolation with a large repetition loop
+    """
+
     # Wrap the scheme with a reduction loop
     mickern_scheme = mickern.to_ttile_scheme()
     # print(f"{mickern_scheme=}")
@@ -392,6 +405,27 @@ def run_and_save_microkernel_info(
     b_savemecanism: bool,
     verbose: bool = True,
 ):
+    """
+    Launch all microkernels of a (stastically defined) space of interesting configurations.
+    It produces a database of microkernels with their associated performance
+    Warning: this will take time (depending on the amount of microkernels)
+
+    Note that the process can be interrupted (option "b_savemecanism"): the number of lines
+      of the output file is then used to know where to restart the process.
+
+    Inputs:
+    - machine : targetted architecture
+    - comp : the computation being run
+    - name_outfile : where the output (.csv file) will be stored
+    - backend : "mlir" or "tvm", the backend compiler to be used to run the computation
+    - b_savemecanism :
+      If True, the outfile will be examined to know where to continue the runs.
+      If False, we restart from the start (and erase the outfile)
+    - verbose: activate some print to know where we are in the process.
+
+    Output: None, but the file "name_outfile" will be modified/enriched.
+    """
+
     # Retrieve the order of dims in the save file
     ldim_order = _get_csv_dim_order(comp)
 
@@ -473,6 +507,16 @@ def run_and_save_microkernel_info(
 def load_microkernel_info(
     name_outfile: str,
 ) -> Tuple[str, str, List[Dict[str, int | float]]]:
+    """
+    Load the information of a database of microkernel perf
+      (stored in a .csv file, produced by "run_and_save_microkernel_info")
+    Input:
+     - name_outfile: where the csv file is
+    Output:
+     - Tuple of machine_name/computation_name/content of the csv.
+       The two first elements are great to confirm that we are using microkernels that are compatible with
+       the currently considered problem (ie, the machine and the computation do match).
+    """
     with open(name_outfile, "r") as fcsv_r:
         # Get the header infos
         # Example:
@@ -558,6 +602,10 @@ def convert_microkernel_info_to_microkernel(
 
 # Check if a "d_mickern_info" dimensions is compatible with a problem size
 def is_compatible_microkernel(d_mickern_info, dprob_sizes: Dict[str, int]) -> bool:
+    """
+    Check if the sizes of a microkernel are compatible (i.e. divides) with the problem size
+    """
+
     for dim in d_mickern_info.keys():
         # All keys are dimensions, except for "peak_perf"
         if dim == "peak_perf":
@@ -576,11 +624,18 @@ def is_compatible_microkernel(d_mickern_info, dprob_sizes: Dict[str, int]) -> bo
 
 # Check if a microkernel info is quicker than a peak perf threshold
 def is_faster_microkernel_than(d_mickern_info, pperf_threshold: float) -> bool:
+    """
+    Is a given microkernel faster than the peak performance threshold?
+    """
+
     return d_mickern_info["peak_perf"] >= pperf_threshold
 
 
 # Sort the microkernels by their peak performance (in increasing performance: last ones are the best ones)
 def sort_microkernels_by_pperf(ld_mickern_info):
+    """
+    Sort the microkernels according to their peak performance
+    """
     ld_mickern_info_sorted = ld_mickern_info.copy()
     ld_mickern_info_sorted = sorted(
         ld_mickern_info_sorted, key=lambda e: e["peak_perf"]

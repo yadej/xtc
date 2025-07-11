@@ -1647,6 +1647,32 @@ def compute_cacheset_aware_comm_vol(
     b_sanity_check: bool = False,
     reuse_strat_full_assoc: ReuseLoopStrat = ReuseLoopStrat.UNLIMITED_LOOP_REUSE,
 ) -> List[int]:
+    """
+    Estimate the number of cache misses, using the sarcasm set-associative cache model
+
+    Input:
+     - scheme : the considered scheme
+     - comp : the considered computation
+     - prob_sizes : the problem sizes (including the stride dimensions)
+     - lcont_arr_order : the order of contiguous allocation of the arrays
+
+    [Cache properties]
+     - lcachesizes : list of cache sizes (in number of elements)
+     - lassoc_cache : cache associativity
+     - lnum_cache_set : list of number of cache sets
+     - cache_line_size : size of a cache line (in number of elements)
+    [Note: all of these list must be of same size, and each element is a cache]
+    [We also assume that the cache are in increasing size order (the number of cache set must be equal/increasing)]
+    [  and that the number of cache sets are divisible between each other (small optim to reuse computation of "lddl_fp")]
+
+    [Optional arguments]
+     - b_sanity_check : perform some extra sanity check to make bug tracking easier
+     - reuse_strat_full_assoc : control the reuse strategy of the underlying fully associative model
+
+    Output:
+     - lcacheline_misses : For each cache [list], gives the estimated number of cache misses for this level of cache
+    """
+
     # 0) Check that the cache properties are coherent
     if b_sanity_check:
         assert len(lcachesizes) == len(lassoc_cache)

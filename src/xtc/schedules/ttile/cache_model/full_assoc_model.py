@@ -738,6 +738,21 @@ def compute_full_assoc_cache_misses(
     comp: Computation,
     reuse_strat: ReuseLoopStrat,
 ) -> List[int]:
+    """
+        Main function for using the fully associative cache model
+        Inputs:
+         - scheme : the scheme for which we want to estimate the number of cache misses
+         - d_full_sizes : the problem sizes (including stride dimensions)
+         - lcachesizes : the sizes (in octet) of the considered cache
+         - cache_line_size : the (common) size of a cache line
+         - comp : the computation being performed
+    [Specific to this implementation]
+         - reuse_strat: Option to manage how the reuse strategy of the algorithm (No reuse, max 1 loop level or unbounded)
+
+        Outputs:
+         - lnum_comms : cache miss estimation for each item in "lcachesizes"
+    """
+
     # We factorize the footprint computation for all cache levels
     d_arrays_accs = get_array_accesses(comp)
     prog_dims = get_ldims_computation(comp)
