@@ -574,6 +574,76 @@ class TVMOperatorConv2D(TVMOperator):
         return (dtype,)
 
 
+class TVMOperatorPad2D(TVMOperator):
+    DEFAULT_NAME = "pad2d"
+    AXES = "bhwc"
+    KINDS = "PPPP"
+
+    def __init__(
+        self, args: tuple[Any, ...], attrs: dict[str, Any], name: str | None = None
+    ) -> None:
+        attrs = {**attrs}
+        super().__init__(args, attrs, name)
+
+    @override
+    def dims(self, kind: str = "") -> tuple[str, ...]:
+        return self._dims(kind)
+
+    @override
+    def dims_sizes(self) -> dict[str, int]:
+        return {axis: size for axis, size in zip(["b", "h", "w", "c"], self.args[:3])}
+
+    @override
+    def generate_op(
+        self, inputs: Sequence[TETensor] | None = None
+    ) -> tuple[TETensor, ...]:
+        b, h, w, c, dtype = self.args
+        hb, he, wb, we = self.attrs["padding"]
+        ha, wa = h - hb - he, w - wb - we
+        if inputs is None:
+            A = te.placeholder((b, ha, wa, c), name="A", dtype=dtype)
+        else:
+            (A,) = inputs
+        O = te.compute(
+            (b, h, w, c),
+            lambda bi, hi, wi, ci: (
+                tvm.tir.if_then_else(
+                    tvm.tir.all(
+                        hi - hb >= 0,
+                        hi - hb < ha,
+                        wi - wb >= 0,
+                        wi - wb < wa,
+                    ),
+                    A[bi, hi - hb, wi - wb, ci],
+                    0,
+                )
+            ),
+            name=self.name,
+        )
+        return A, O
+
+    @override
+    def inputs_dims(self) -> tuple[tuple[int, ...], ...]:
+        b, h, w, c = self.args[:4]
+        hb, he, wb, we = self.attrs["padding"]
+        return ((b, h - hb - he, w - wb - we, c),)
+
+    @override
+    def inputs_types(self) -> tuple[str, ...]:
+        _, dtype = self.args
+        return (dtype,)
+
+    @override
+    def outputs_dims(self) -> tuple[tuple[int, ...], ...]:
+        b, h, w, c, _ = self.args
+        return ((b, h, w, c),)
+
+    @override
+    def outputs_types(self) -> tuple[str, ...]:
+        _, dtype = self.args
+        return (dtype,)
+
+
 class TVMOperators:
     @classmethod
     def from_name(cls, name: str) -> Type[TVMOperator]:
@@ -583,3 +653,4 @@ class TVMOperators:
     matmul = TVMOperatorMatmul
     relu = TVMOperatorRelu
     conv2d = TVMOperatorConv2D
+    pad2d = TVMOperatorPad2D
