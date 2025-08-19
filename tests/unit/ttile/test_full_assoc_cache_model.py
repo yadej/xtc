@@ -173,7 +173,7 @@ def test_saturation_level_1_L1():
 	ldd_footprint = compute_footprint_for_each_level(scheme, comp, d_full_sizes, d_arrays_accs, prog_dims, cache_line_size)
 	d_sat_loop_lvl = find_saturation_level(ldd_footprint, cachesize, comp)
 
-	assert(d_sat_loop_lvl == {'': 5})
+	assert(d_sat_loop_lvl == {'': 4})
 
 	return
 
@@ -194,7 +194,7 @@ def test_saturation_level_1_L2():
 	ldd_footprint = compute_footprint_for_each_level(scheme, comp, d_full_sizes, d_arrays_accs, prog_dims, cache_line_size)
 	d_sat_loop_lvl = find_saturation_level(ldd_footprint, cachesize, comp)
 
-	assert(d_sat_loop_lvl == {'': 10})
+	assert(d_sat_loop_lvl == {'': 9})
 
 	return
 
@@ -215,7 +215,7 @@ def test_saturation_level_2_L1():
 	ldd_footprint = compute_footprint_for_each_level(scheme, comp, d_full_sizes, d_arrays_accs, prog_dims, cache_line_size)
 	d_sat_loop_lvl = find_saturation_level(ldd_footprint, cachesize, comp)
 
-	assert(d_sat_loop_lvl == {'w*0': 6, 'w*1': 6})
+	assert(d_sat_loop_lvl == {'w*0': 5, 'w*1': 5})
 
 	return
 
@@ -236,7 +236,7 @@ def test_saturation_level_2_L2():
 	ldd_footprint = compute_footprint_for_each_level(scheme, comp, d_full_sizes, d_arrays_accs, prog_dims, cache_line_size)
 	d_sat_loop_lvl = find_saturation_level(ldd_footprint, cachesize, comp)
 
-	assert(d_sat_loop_lvl == {'w*0': 11, 'w*1': 11})
+	assert(d_sat_loop_lvl == {'w*0': 10, 'w*1': 10})
 
 	return
 
@@ -257,7 +257,7 @@ def test_saturation_level_3():
 	d_sat_loop_lvl = find_saturation_level(ldd_footprint, cachesize, comp)
 
 	#print_ldd_footprint(scheme, ldd_footprint)
-	assert(d_sat_loop_lvl == {'i*0,k*0': 3, 'i*0,k*1': 3, 'i*1,k*0': 4, 'i*1,k*1': 5})
+	assert(d_sat_loop_lvl == {'i*0,k*0': 2, 'i*0,k*1': 2, 'i*1,k*0': 3, 'i*1,k*1': 4})
 
 	return
 
@@ -277,7 +277,7 @@ def test_saturation_level_4():
 	d_sat_loop_lvl = find_saturation_level(ldd_footprint, cachesize, comp)
 
 	#print_ldd_footprint(scheme, ldd_footprint)
-	assert(d_sat_loop_lvl == {'i*0,k*0': 3, 'i*0,k*1': 3, 'i*1,k*0': 4, 'i*1,k*1': 4})
+	assert(d_sat_loop_lvl == {'i*0,k*0': 2, 'i*0,k*1': 2, 'i*1,k*0': 3, 'i*1,k*1': 3})
 
 	return
 

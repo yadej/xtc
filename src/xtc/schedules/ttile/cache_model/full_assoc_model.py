@@ -178,7 +178,7 @@ def print_ldd_footprint(
     o_cache_line_size: Optional[int] = None,
 ):
     for i in range(len(ldd_footprint)):
-        print(f"- Loop lvl {i + 1} - Last scheme atom: {scheme[i]}:")
+        print(f"- Loop lvl {i} - Last scheme atom: {scheme[i]}:")
 
         dd_footprint = ldd_footprint[i]
         for k, d_fp in dd_footprint.items():
@@ -220,12 +220,13 @@ def _extend_str_lambda_loc(str_lambda_loc: str, dim: str, kbr: int, comp: Comput
 #  Due to the presence of lambdas, this value might change for each lambda branches, thus
 #    we return a dictionnary "d_sat_loop_lvl: [str_lambda_branch] |---> loop_lvl"
 #
-#  This "loop_lvl" corresponds to the level directly ABOVE saturation.
+#  This "loop_lvl" corresponds to the first loop level index in "scheme" that have a global footprint above
+# the cache size (= that triggers the cache saturation).
 #  If no saturation happens on any branches, then "loop_lvl" is set to "None" (don't forget to catch that case).
 #    Note that because the scheme is complete, if saturation happens at any branch,
 #      the whole scheme is saturated at top loop lvl.
 #  If a saturation happens in the middle of a lambda branch, we need to keep track of different
-#      saturation levels
+#      saturation levels.
 #
 # Input:
 #   ldd_footprint (from "compute_footprint_for_each_level")
@@ -256,12 +257,12 @@ def find_saturation_level(
     # even if the dd_footprint only see "X1"/"X2" and "Y1"/"Y2".
 
     # For each loop level (in between the atoms of a scheme)
-    for loop_lvl in range(1, num_loop_level + 1):
+    for loop_lvl in range(0, num_loop_level):
         # DEBUG
         # print(f"[Saturation] Start loop level {loop_lvl} => {d_sat_loop_lvl=}")
 
         # Retrieving the total footprint across all arrays for this level
-        dd_footprint = ldd_footprint[loop_lvl - 1]
+        dd_footprint = ldd_footprint[loop_lvl]
 
         # We check the status of saturation on each keys of dd_footprint
         d_sat_local_lvl = dict()  # [lambda_branch id of dd_footprint] |---> Boolean
@@ -359,17 +360,64 @@ class ReuseLoopStrat(Enum):
                 raise ValueError("Unknown ReuseLoopStrat in ReuseLoopStrat::__str__")
 
 
+# ## Reuse algorithm on a simple example ##
+# Let us consider the following loop:
+#  for k        // Lsat+2
+#   for i       // Lsat+1
+#    for j      // Lsat, ie the tile that includes [for j] has a footprint over the cache size
+#      ...
+#      A[i] += B[j] * C[k]
+#
+# Reuse algo:
+# For each array access on array A, we start by looking at Lsat.
+# Reuse_lvl(A) = the first level about Lsat (included) whose dimension loop is not a reuse level of A
+# We also ignore the "for loops" iterating only once.
+#
+# In this example, here is the assumed cache state:
+#   @Lsat lvl: [ A in place | C in place | B rotating & spilling the first tiles when finishing the last ]
+#   @Lsat+1 lvl: [C in place | A changing at each iteration, thus spilling | B making everything non-inplace spill]
+#   @Lsat+2 lvl: Everything new spill
+# ==> Sat_lvl(B) = Lsat | Sat_lvl(A) = Lsat+1 | Sat_lvl(C) = Lsat+2
+
+
+# Decides if the current atom is a reuse atom for the current array/computation
+def _is_reuse_atom(
+    current_atom: Atom, ldim_reuse_arr: List[str], str_lambda_loc: str
+) -> bool:
+    # Just skip this level
+    if current_atom.type == AtomType.HOIST:
+        return True
+
+    if current_atom.dim in ldim_reuse_arr:
+        return True
+    else:
+        # If the loop is T(k,1), the fact that k is not a reuse dimension can be ignored
+        if current_atom.type in [AtomType.TILE, AtomType.UNROLL, AtomType.TILE_PARAL]:
+            return current_atom.ratio == 1  # Not a reuse if != 1
+
+        # If we have in a T/ULAMBDA, and exactly on a branch with a ratio at 1
+        elif current_atom.type in [AtomType.TLAMBDA, AtomType.ULAMBDA]:
+            brid = recover_branchid_from_stringified(str_lambda_loc, current_atom.dim)
+            return current_atom.lratios[brid] == 1  # Not a reuse if != 1
+
+        else:
+            # We really have no reuse here
+            return False
+
+
 # [Aux function] Find the number of repetition of a given branch of a loop
 #  Inputs:
 #    - scheme = the scheme we examine
 #    - arr = the name of the array
-#    - sat_loop_lvl = the saturation loop lvl (division between loop lvl, "i" is between scheme[i] and scheme[i+1])
+#    - sat_loop_lvl = the saturation loop lvl (loop lvl that starts to go over the size of a cache)
+# Note that saturation HAS to happen at some point. The other case (whole scheme is cache resident)
+# need to be managed before this call (since there are no reuse above saturation to be considered).
 #    - str_lambda_loc = the lambda branch we are currently examining
 #    - comp = the considered computation
 #    - reuse_strat = a "ReuseLoopStrat" (cf enum above) that control how we manage the reuse coming
 # from the loops above saturation level.
 #  Output:
-#    - sat_loop_lvl = the reuse loop lvl (should be equal or above sat_loop_lvl)
+#    - fp_reuse_loop_lvl = the reuse loop lvl (should be equal or above sat_loop_lvl) to be used for footprint index
 #    - num_repet = number of time the accesses of "acc" of the tile at lvl "sat_loop_lvl" in "scheme" is repeated.
 def compute_num_repet_reuse(
     scheme: List[Atom],
@@ -380,7 +428,7 @@ def compute_num_repet_reuse(
     reuse_strat: ReuseLoopStrat,
 ) -> Tuple[int, int]:
     # 1) From where do we start counting? (reuse strat)
-    if sat_loop_lvl == len(scheme):
+    if sat_loop_lvl == len(scheme) - 1:
         # We are already at top level: no loop above to consider reuse on
         reuse_loop_lvl = sat_loop_lvl
     else:
@@ -395,27 +443,31 @@ def compute_num_repet_reuse(
             # Note: if no reuse during saturation level then assume data is evicted before end of iterations
             #  If reuse during saturation level, then same block of data reuse again and again so stay in cache
             # ===> We really need to check starting from right below the saturation level.
-            current_atom = scheme[sat_loop_lvl - 1]
+            current_atom = scheme[sat_loop_lvl]
 
-            # These should be removed (preprocess of scheme) before going in here
-            assert current_atom.type != AtomType.HOIST
-            dim = current_atom.dim
+            b_is_reuse_atom = _is_reuse_atom(
+                current_atom, ldim_reuse_arr, str_lambda_loc
+            )
 
-            if dim in ldim_reuse_arr:
+            # If this is a reuse atom, then we increment the reuse level
+            if b_is_reuse_atom:
                 reuse_loop_lvl = sat_loop_lvl + 1
             else:
                 reuse_loop_lvl = sat_loop_lvl
         elif reuse_strat == ReuseLoopStrat.UNLIMITED_LOOP_REUSE:
             reuse_loop_lvl = sat_loop_lvl
-            while reuse_loop_lvl <= len(scheme):
+            while reuse_loop_lvl <= len(scheme) - 1:
                 # Check the atom right above the current reuse level
-                current_atom = scheme[reuse_loop_lvl - 1]
+                current_atom = scheme[reuse_loop_lvl]
+                b_is_reuse_atom = _is_reuse_atom(
+                    current_atom, ldim_reuse_arr, str_lambda_loc
+                )
 
-                # These should be removed (preprocess of scheme) before going in here
-                assert current_atom.type != AtomType.HOIST
-                dim = current_atom.dim
+                # DEBUG
+                # print(f"{reuse_loop_lvl=} => current_atom={str(current_atom)} | {b_is_reuse_atom=}")
 
-                if dim in ldim_reuse_arr:
+                # If this is a reuse atom, then we increment the reuse level
+                if b_is_reuse_atom:
                     reuse_loop_lvl = reuse_loop_lvl + 1
                 else:
                     break
@@ -429,20 +481,25 @@ def compute_num_repet_reuse(
         )
 
     # 1B) fp_reuse_loop_lvl = reuse_loop_lvl, except that we stop at a "Seq"
-    # (else, the value taken for the footprint is wrong, since we are taking the fp from several branches)
+    # (else, the value taken for the footprint is wrong, since we are taking the footprint from several branches)
     fp_reuse_loop_lvl = None
     for ilvl in range(sat_loop_lvl, reuse_loop_lvl + 1):
-        current_atom = scheme[ilvl - 1]
-
+        current_atom = scheme[ilvl]
         if current_atom.type == AtomType.SEQ:
+            # Backtrack right below the SEQ
             fp_reuse_loop_lvl = ilvl - 1
+            break
 
     if fp_reuse_loop_lvl == None:
         fp_reuse_loop_lvl = reuse_loop_lvl
 
+    # DEBUG
+    if _debug_reuse_full_assoc:
+        print(f"            => Corrected reuse lvl = {fp_reuse_loop_lvl}")
+
     # 2) Counting in the scheme, starting from reuse_loop_lvl
     num_repet = 1
-    for ilvl in range(reuse_loop_lvl, len(scheme)):
+    for ilvl in range(reuse_loop_lvl + 1, len(scheme)):
         # Recover the multiplier here
         current_atom = scheme[ilvl]
 
@@ -487,7 +544,7 @@ _debug_full_assoc = False
 # Inputs:
 #   - "scheme" : the scheme whose number of cache misses we want to estimate
 # - "ldd_footprint" : the footprint of the scheme at each loop levels
-#   - "lcachesizes" : the sizes of the cache we consider.
+#   - "lcachesizes" : the sizes of the cache we consider in elements.
 # - "cache_line_size" : the size of a cache line (in elements)
 # - "comp" : the considered computation
 # Output:
@@ -601,8 +658,8 @@ def full_assoc_model_with_fp(
         # => Avoid counting these iterations multiple times.
         n_d_sat_loop_lvl: dict[str, int] = dict()
         for str_lambda_loc, sat_loop_lvl in d_sat_loop_lvl_unsat.items():
-            # Atoms that are below the saturation loop lvl
-            pref_scheme = scheme[:sat_loop_lvl]
+            # Atoms up to (and including) the saturation loop lvl
+            pref_scheme = scheme[: sat_loop_lvl + 1]
 
             # Check for Seq in these atoms
             b_keep_branch = True
@@ -611,7 +668,7 @@ def full_assoc_model_with_fp(
                 if atom.type == AtomType.SEQ:
                     dim_seq = atom.dim
                     if k == len(pref_scheme) - 1:
-                        # Case B(iii)
+                        # The last atom is a Seq (that did saturate after combining 2 branches) => Case B(iii)
                         # The Seq is at saturation: we just need to update sat_loop_lvl to push it right below "Seq"
                         sat_loop_lvl = sat_loop_lvl - 1
                     else:
@@ -663,17 +720,18 @@ def full_assoc_model_with_fp(
                     scheme, arr, sat_loop_lvl_br, str_lambda_loc, comp, reuse_strat
                 )
 
-                # Note we prefer to take the footprint of reuse dimension at the reuse lvl,
-                #   rather than the saturation level, even if in 99% of the cases they should be
-                #   identical. The exception is due to the presence of "small dimensions"
-                #   (cf the reuse dimensions of conv2d for example), which still grows the footprint
-                # during reuse, but in a small manner (small enough to consider it a "quasi-reuse" dimension)
-
-                dd_footprint = ldd_footprint[reuse_loop_lvl_br - 1]
+                # Note we should take the footprint of reuse dimension at the reuse lvl,
+                #   rather than the saturation level.
+                #   For most of the situations, both quantities are equal.
+                #   However, when we have "small dimensions" (cf the reuse dimensions of conv2d for example),
+                #   these grows the footprint, in a negligeable manner.
+                #   This is small enough to consider it a "quasi-reuse" dimension
+                #   (thus the difference between "get_strict_reuse_dims" and "get_reuse_dims" in "computation.py")
+                dd_footprint = ldd_footprint[reuse_loop_lvl_br]
 
                 # DEBUG
-                # print(f"sat_loop_lvl_br-1 = {sat_loop_lvl_br-1}")
-                # print(f"  => Available keys = { list(ldd_footprint[sat_loop_lvl_br-1].keys())}")
+                # print(f"sat_loop_lvl_br = {sat_loop_lvl_br}")
+                # print(f"  => Available keys = { list(ldd_footprint[sat_loop_lvl_br].keys())}")
                 # print(f"str_lambda_loc = {str_lambda_loc}")
 
                 # Quick adaptation of the stringified lambda branch location
