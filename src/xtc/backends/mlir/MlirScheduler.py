@@ -104,7 +104,21 @@ class MlirScheduler(itf.schd.Scheduler):
         self, axis: str, mtype: str | None = None, root: str = DEFAULT_ROOT
     ) -> None:
         assert self._scheduler is not None
-        assert mtype is None or mtype == "write"
+        assert mtype is None or mtype == "local"
+        # TODO: not implemented for now
+        pass
+
+    @override
+    def pack_at(
+        self,
+        axis: str,
+        input_idx: int,
+        mtype: str | None = None,
+        pad: bool = False,
+        root: str = DEFAULT_ROOT,
+    ) -> None:
+        assert self._scheduler is not None
+        assert mtype is None or mtype == "local"
         # TODO: not implemented for now
         pass
 

@@ -284,7 +284,21 @@ class JIRScheduler(itf.schd.Scheduler):
     def buffer_at(
         self, axis: str, mtype: str | None = None, root: str = DEFAULT_ROOT
     ) -> None:
-        # TODO: not implemented
+        assert mtype is None or mtype == "local"
+        # TODO: not implemented for now
+        pass
+
+    @override
+    def pack_at(
+        self,
+        axis: str,
+        input_idx: int,
+        mtype: str | None = None,
+        pad: bool = False,
+        root: str = DEFAULT_ROOT,
+    ) -> None:
+        assert mtype is None or mtype == "local"
+        # TODO: not implemented for now
         pass
 
     def get_schedule_str(self) -> str:

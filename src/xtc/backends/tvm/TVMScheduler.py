@@ -6,6 +6,7 @@ import sys
 from typing_extensions import override
 from typing import TextIO, TypeAlias
 from io import StringIO
+import numpy as np
 
 from xtc.itf.schd.scheduler import DEFAULT_ROOT
 import xtc.backends.tvm as backend
@@ -38,6 +39,7 @@ class TVMScheduler(itf.schd.Scheduler):
         self.parallelization: list[str] = []
         self.unrolling: dict[str, int] = {}
         self.write_caches: list[str] = []
+        self.read_buffers: list[tuple[str, int, bool]] = []
         self._update_loops()
 
     @property
@@ -99,8 +101,21 @@ class TVMScheduler(itf.schd.Scheduler):
     def buffer_at(
         self, axis: str, mtype: str | None = None, root: str = DEFAULT_ROOT
     ) -> None:
-        assert mtype is None or mtype == "write"
+        assert mtype is None or mtype == "local"
         self.write_caches.append(axis)
+
+    @override
+    def pack_at(
+        self,
+        axis: str,
+        input_idx: int,
+        mtype: str | None = None,
+        pad: bool = False,
+        root: str = DEFAULT_ROOT,
+    ) -> None:
+        assert mtype is None or mtype == "local"
+        assert input_idx >= 0 and input_idx < len(self._op.np_inputs_spec())
+        self.read_buffers.append((axis, input_idx, pad))
 
     @override
     def vectorize(self, axes: list[str], root: str = DEFAULT_ROOT) -> None:
@@ -119,6 +134,27 @@ class TVMScheduler(itf.schd.Scheduler):
         for axis, unroll in unrolls.items():
             assert unroll > 0, f"unroll < 1 not supported for axis {axis}"
         self.unrolling = unrolls
+
+    def _full_packs(self) -> dict[str, tuple[int, int, int]]:
+        def factor_offset(input_idx: int, pad: bool):
+            if not pad:
+                return 0, 0
+            input_spec = self._op.np_inputs_spec()[input_idx]
+            if len(input_spec["shape"]) < 2:
+                return 0, 0
+            # Assume for CPU common number of sets and line size for L1
+            # Except to minimize conflicts by setting the inner axis
+            # size to a factor of num_sets and adding +1
+            num_sets, line_size = 64, 64
+            elt_size = np.dtype(input_spec["dtype"]).itemsize
+            elts_per_line = line_size // elt_size
+            return elts_per_line * num_sets, elts_per_line
+
+        packs = {}
+        for axis, input_idx, pad in self.read_buffers:
+            factor, offset = factor_offset(input_idx, pad)
+            packs[axis] = (input_idx, factor, offset)
+        return packs
 
     def _full_order(self) -> list[str]:
         tiles_sizes = self._working_dims
@@ -169,11 +205,17 @@ class TVMScheduler(itf.schd.Scheduler):
         tile_idx = tiles_axis.index(axis)
         outer_tiles = dict(list(tilings.items())[: tile_idx + 1])
         inner_tiles = dict(list(tilings.items())[tile_idx + 1 :])
+        outers_dims = set()
         for axis, (dim, parent, factor) in list(outer_tiles.items()):
+            outers_dims.add(dim)
             factor = child.get(axis, ("", "", 1))[2]
             outer_tiles[f"{dim}_"] = (dim, axis, factor)
         dims = set()
         for axis, (dim, parent, factor) in list(inner_tiles.items()):
+            if outers_dims and dim not in outers_dims:
+                outers_dims.add(dim)
+                if dim in self.parallel_dims:
+                    outer_tiles[f"{dim}_"] = (dim, dim, 0)
             if dim not in dims:
                 dims.add(dim)
                 parent = ""
@@ -217,26 +259,51 @@ class TVMScheduler(itf.schd.Scheduler):
                 if axis != dim:
                     print(f"{axis} = {dim}", file=outf)
                 continue
-            print(
-                f"{parent}, {axis} = {sch}[{tens}].split({parent}, factor={factor})",
-                file=outf,
-            )
+            if factor > 0:
+                print(
+                    f"{parent}, {axis} = {sch}[{tens}].split({parent}, factor={factor})",
+                    file=outf,
+                )
+            else:
+                print(f"{axis} = {parent}", file=outf)
         print(f"{sch}[{tens}].reorder({', '.join(tilings)})", file=outf)
 
     def _dump_tvm_schedule(
         self, obj: str = "obj", sch: str = "sch", outf: TextIO = sys.stdout
     ):
         tilings = self._full_write_buffers()
-        for tens, parent, _ in tilings:
+        packings = self._full_packs()
+        if packings:
+            print(f"INPS = list({obj}.values())[:-1]", file=outf)
+        for (tens, parent, axis), tiles in tilings.items():
             if not parent:
                 print(f"{tens} = {obj}['{self._op.name}']", file=outf)
             else:
                 print(f'{tens} = {sch}.cache_write({parent}, "local")', file=outf)
+            for tile_axis in tiles:
+                if tile_axis in packings:
+                    inp_idx, _, _ = packings[tile_axis]
+                    print(
+                        f'I_R{inp_idx} = {sch}.cache_read(INPS[{inp_idx}], "local", [{tens}])',
+                        file=outf,
+                    )
         for idx, ((tens, parent, axis), tiles) in enumerate(tilings.items()):
             if parent:
                 print(f"{sch}[{tens}].compute_at({sch}[{parent}], {axis})", file=outf)
             self._emit_assign_axis(sch, tens, outf)
             self._emit_assign_tilings(sch, tens, tiles, outf)
+            for tile_axis in tiles:
+                if tile_axis in packings:
+                    inp_idx, factor, offset = packings[tile_axis]
+                    print(
+                        f"{sch}[I_R{inp_idx}].compute_at({sch}[{tens}], {tile_axis})",
+                        file=outf,
+                    )
+                    if factor != 0:
+                        print(
+                            f"{sch}[I_R{inp_idx}].storage_align(I_R{inp_idx}.op.axis[-2], factor={factor}, offset={offset})",
+                            file=outf,
+                        )
             for axis, unroll in self.unrolling.items():
                 for u_axis in [f"__u_{axis}", axis]:
                     if u_axis in tiles:

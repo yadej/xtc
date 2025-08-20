@@ -140,7 +140,7 @@ class Scheduler(ABC):
     def buffer_at(
         self, axis: str, mtype: str | None = None, root: str = DEFAULT_ROOT
     ) -> None:
-        """Apply a write bufferoization at a given level,
+        """Create a write buffer at a given level.
 
         A write buffer is created for the output under the given
         axis, The buffer memory type can be specified or defaults
@@ -149,6 +149,32 @@ class Scheduler(ABC):
         Args:
             axis: localisation of the write buffer
             mtype: buffer memory type for the allocation
+            root: the parent split (or the operator's absolute root)
+        """
+        ...
+
+    @abstractmethod
+    def pack_at(
+        self,
+        axis: str,
+        input_idx: int,
+        mtype: str | None = None,
+        pad: bool = False,
+        root: str = DEFAULT_ROOT,
+    ) -> None:
+        """Create a packed read buffer at a given level.
+
+        A packed read buffer is created for the given input buffer index.
+        The buffer memory type can be specified or defaults
+        to the local memory at this level.
+        When pad is true, a padding strategy is applied in order to reduce
+        sets/banks conflicts.
+
+        Args:
+            axis: localisation of the write buffer
+            input_idx: input buffer index for the scheduled computation
+            mtype: buffer memory type for the allocation
+            pad: whether to add padding or not
             root: the parent split (or the operator's absolute root)
         """
         ...
