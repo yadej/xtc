@@ -2,7 +2,7 @@
 # REQUIRES: module_jir
 
 import xtc.graphs.xtc.op as O
-from xtc.backends.jir import JIRBackend as Backend
+from xtc.backends.jir import Backend
 
 I, J, K, dtype = 4, 32, 512, "float32"
 a = O.tensor((I, K), dtype, name="A")

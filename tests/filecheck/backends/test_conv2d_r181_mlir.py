@@ -1,7 +1,7 @@
 # RUN: python %s 2>&1 | filecheck %s
 
 import xtc.graphs.xtc.op as O
-from xtc.backends.mlir.MlirGraphBackend import MlirGraphBackend as Backend
+from xtc.backends.mlir import Backend
 
 # Resnet18_01 size
 N, H, W, F, R, S, C, SH, SW, dtype = 1, 224, 224, 64, 7, 7, 3, 2, 2, "float32"

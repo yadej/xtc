@@ -2,7 +2,7 @@
 # REQUIRES: module_tvm
 
 import xtc.graphs.xtc.op as O
-from xtc.backends.tvm import TVMBackend as Backend
+from xtc.backends.tvm import Backend
 
 I, J, K, dtype = 64, 64, 64, "float32"
 a = O.tensor((I, K), dtype, name="A")

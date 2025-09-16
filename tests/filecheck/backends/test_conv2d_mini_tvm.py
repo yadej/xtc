@@ -2,7 +2,7 @@
 # REQUIRES: module_tvm
 
 import xtc.graphs.xtc.op as O
-from xtc.backends.tvm import TVMBackend as Backend
+from xtc.backends.tvm import Backend
 
 # Small conv2d
 N, H, W, F, R, S, C, SH, SW, dtype = 1, 8, 8, 16, 3, 3, 3, 1, 1, "float32"

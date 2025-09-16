@@ -1,7 +1,7 @@
 # RUN: python %s 2>&1 | filecheck %s
 
 import xtc.graphs.xtc.op as O
-from xtc.backends.mlir.MlirGraphBackend import MlirGraphBackend as Backend
+from xtc.backends.mlir import Backend
 
 # Small conv2d
 N, H, W, F, R, S, C, SH, SW, dtype = 1, 8, 8, 16, 3, 3, 3, 1, 1, "float32"

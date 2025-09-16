@@ -28,12 +28,12 @@ def get_graph_conv2d():
 
 def get_backend(graph: Graph, backend: str = "mlir"):
     if backend == "mlir":
-        from xtc.backends.mlir.MlirGraphBackend import MlirGraphBackend as Backend
+        from xtc.backends.mlir import Backend
     elif backend == "tvm":
-        from xtc.backends.tvm import TVMBackend as Backend
+        from xtc.backends.tvm import Backend
     else:
         assert backend == "jir"
-        from xtc.backends.jir import JIRBackend as Backend
+        from xtc.backends.jir import Backend
     return Backend(graph)
 
 def print_all_opt_schedules(backend: Backend, strategy: Strategy):

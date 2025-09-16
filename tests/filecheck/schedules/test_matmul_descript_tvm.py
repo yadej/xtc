@@ -2,7 +2,7 @@
 # REQUIRES: module_tvm
 
 import xtc.graphs.xtc.op as O
-from xtc.backends.tvm import TVMBackend as Backend
+from xtc.backends.tvm import Backend
 from xtc.schedules.descript import descript_scheduler
 
 I, J, K, dtype = 4, 32, 512, "float32"

@@ -1,7 +1,7 @@
 # RUN: python %s 2>&1 | filecheck %s
 
 import xtc.graphs.xtc.op as O
-from xtc.backends.mlir.MlirGraphBackend import MlirGraphBackend as Backend
+from xtc.backends.mlir import Backend
 from xtc.schedules.descript import descript_scheduler
 
 I, J, K, dtype = 4, 32, 512, "float32"
