@@ -6,6 +6,7 @@ import operator
 from functools import reduce
 import numpy as np
 
+
 _divisors_list_memo: dict[int, list[int]] = {}
 
 
@@ -92,3 +93,60 @@ def factors_to_sizes(splits: list[int]) -> list[int]:
 def mulall(args: list[int]) -> int:
     """Multiply all args in list"""
     return reduce(operator.mul, args, 1)
+
+
+def estimate_unique_num_chao1(
+    unique_num: int,
+    once_num: int,
+    twice_num: int,
+) -> int:
+    """
+    Returns the Chao1 richness estimate in order to
+    approximate the number of unique samples in a space from the
+    already drawn unique num and the ones seen exactly once
+    and twice. This gives a lower bound of the estimated uniques.
+    Note that if unique_num is 0, the estimate is still 0.
+    This should be used only for sufficiently large draws >= 20.
+    We use the bias corrected version described in the SpadeR User guide.
+    Ref: https://sites.google.com/view/chao-lab-website/software/spade
+    Ref: https://osf.io/tb9w2/download
+    """
+    assert once_num >= 0
+    assert twice_num >= 0
+    assert unique_num >= once_num + twice_num
+    chao1_bc = unique_num + (once_num * (once_num - 1)) / (2 * (twice_num + 1))
+    return int(chao1_bc + 0.5)
+
+
+def estimate_unique_prob_good_turing(
+    sample_size: int,
+    once_num: int,
+) -> float:
+    """
+    Returns the probability estimate of a new unique from the current
+    sample size (including possibly non uniques) and the ones seen exactly once.
+    Smoothed in order to account for small or 0 samples size.
+    Ref: https://en.wikipedia.org/wiki/Good%E2%80%93Turing_frequency_estimation
+    """
+    assert sample_size >= 0
+    assert sample_size >= once_num
+    return estimate_count_prob_smooth(once_num, sample_size)
+
+
+def estimate_count_prob_smooth(
+    count: int,
+    sample_size: int,
+    alpha: float = 1.0,
+) -> float:
+    """
+    Estimate a smoothed probability given the
+    current count and sample size for an observation.
+    Uses additive smoothing for handling low number or 0 values.
+    Returns by convention 0 if alpha is 0 and samples is 0.
+    Ref: https://en.wikipedia.org/wiki/Additive_smoothing
+    """
+    assert count <= sample_size
+    assert alpha >= 0
+    if alpha == 0 and sample_size == 0:
+        return 0
+    return (count + alpha) / (sample_size + alpha)
