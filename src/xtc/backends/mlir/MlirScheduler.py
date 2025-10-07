@@ -3,7 +3,6 @@
 # Copyright (c) 2024-2026 The XTC Project Authors
 #
 from typing_extensions import override
-from typing import cast
 
 from xtc.itf.schd.scheduler import DEFAULT_ROOT
 import xtc.itf as itf
@@ -23,6 +22,7 @@ class MlirScheduler(itf.schd.Scheduler):
         backend: "backend.MlirBackend",
         nodes_schedulers: list["MlirScheduler"] | None = None,
         nodes: list[str] | None = None,
+        default_node: str | None = None,
     ) -> None:
         from .MlirGraphBackend import MlirGraphBackend
         from .MlirNodeBackend import MlirNodeBackend
@@ -40,23 +40,39 @@ class MlirScheduler(itf.schd.Scheduler):
                     ]
             else:
                 self._nodes_schedulers = nodes_schedulers
-            # TODO: by default, when a graph, we assume to schedule the
-            # output node which is assumed to be the last
-            self._scheduler: MlirNodeScheduler | None = (
-                self._nodes_schedulers[-1]._scheduler
-                if len(self._nodes_schedulers) > 0
+
+            # Take last node or find default_node
+            if default_node is None:
+                candidate_nodes = self._nodes_schedulers
+            else:
+                candidate_nodes = [
+                    scheduler
+                    for scheduler in self._nodes_schedulers
+                    if scheduler._current_scheduler.node_name == default_node
+                ]
+
+            self._node_scheduler: MlirNodeScheduler | None = (
+                candidate_nodes[-1]._current_scheduler
+                if len(candidate_nodes) > 0
                 else None
             )
         else:
             assert isinstance(backend, MlirNodeBackend)
             assert nodes_schedulers is None
+            assert nodes is None
+            assert default_node is None
             self._nodes_schedulers = [self]
-            self._scheduler = MlirNodeScheduler(
+            self._node_scheduler = MlirNodeScheduler(
                 node_name=backend.payload_name,
                 node_ident=backend.op_id_attribute,
                 dims=list(backend.dims),
                 loop_stamps=backend.loop_stamps,
             )
+
+    @property
+    def _current_scheduler(self) -> MlirNodeScheduler:
+        assert self._node_scheduler is not None
+        return self._node_scheduler
 
     @property
     @override
@@ -69,42 +85,38 @@ class MlirScheduler(itf.schd.Scheduler):
         from .MlirNodeBackend import MlirNodeBackend
 
         if isinstance(self._backend, MlirGraphBackend):
-            assert not any(
-                [scheduler._scheduler is None for scheduler in self._nodes_schedulers]
-            )
             nodes_schedules = [
-                cast(MlirNodeScheduler, scheduler._scheduler).mlir_node_schedule()
+                scheduler._current_scheduler.mlir_node_schedule()
                 for scheduler in self._nodes_schedulers
             ]
         else:
             assert isinstance(self._backend, MlirNodeBackend)
-            assert self._scheduler is not None
-            nodes_schedules = [self._scheduler.mlir_node_schedule()]
+            nodes_schedules = [self._current_scheduler.mlir_node_schedule()]
         return MlirSchedule(scheduler=self, nodes_schedules=nodes_schedules)
+
+    @override
+    def set_dims(self, dims: list[str]) -> None:
+        self._current_scheduler.set_dims(dims)
 
     @override
     def split(
         self, dim: str, segments: dict[str, int], root: str = DEFAULT_ROOT
     ) -> None:
-        assert self._scheduler is not None
-        self._scheduler.split(dim, segments, root=root)
+        self._current_scheduler.split(dim, segments, root=root)
 
     @override
     def tile(self, dim: str, tiles: dict[str, int], root: str = DEFAULT_ROOT) -> None:
-        assert self._scheduler is not None
-        self._scheduler.tile(dim, tiles, root=root)
+        self._current_scheduler.tile(dim, tiles, root=root)
 
     @override
     def interchange(self, permutation: list[str], root: str = DEFAULT_ROOT) -> None:
-        assert self._scheduler is not None
-        self._scheduler.interchange(permutation, root=root)
+        self._current_scheduler.interchange(permutation, root=root)
 
     @override
     def buffer_at(
         self, axis: str, mtype: str | None = None, root: str = DEFAULT_ROOT
     ) -> None:
-        assert self._scheduler is not None
-        assert mtype is None or mtype == "local"
+        assert mtype is None or mtype == "global"
         # TODO: not implemented for now
         pass
 
@@ -117,25 +129,21 @@ class MlirScheduler(itf.schd.Scheduler):
         pad: bool = False,
         root: str = DEFAULT_ROOT,
     ) -> None:
-        assert self._scheduler is not None
-        assert mtype is None or mtype == "local"
+        assert mtype is None or mtype == "global"
         # TODO: not implemented for now
         pass
 
     @override
     def vectorize(self, axes: list[str], root: str = DEFAULT_ROOT) -> None:
-        assert self._scheduler is not None
-        self._scheduler.vectorize(axes, root=root)
+        self._current_scheduler.vectorize(axes, root=root)
 
     @override
     def parallelize(self, axes: list[str], root: str = DEFAULT_ROOT) -> None:
-        assert self._scheduler is not None
-        self._scheduler.parallelize(axes, root=root)
+        self._current_scheduler.parallelize(axes, root=root)
 
     @override
     def unroll(self, unrolls: dict[str, int], root: str = DEFAULT_ROOT) -> None:
-        assert self._scheduler is not None
-        self._scheduler.unroll(unrolls, root=root)
+        self._current_scheduler.unroll(unrolls, root=root)
 
 
 class MlirSchedule(itf.schd.Schedule):

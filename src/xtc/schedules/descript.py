@@ -28,6 +28,8 @@ class Descript:
     def apply(self, node_name: str, spec: dict[str, dict]):
         flat_schedules = self._flatten_schedule(root=node_name, spec=spec)
         self._check_flattened_schedule(flat_schedules)
+
+        self.scheduler.set_dims(self.abstract_axis)
         for schedule in flat_schedules:
             root = schedule["root"]
 
@@ -288,7 +290,7 @@ class Descript:
         splits = sched["splits"]
 
         self._check_vectorize_inner_tile(sched, loop_to_axis, knowned_vectorized_axis)
-        self._check_tile_divisible(sched, last_sizes, current_split_size)
+        self._check_tile_size(sched, last_sizes, current_split_size)
         self._check_axis_usage(sched, loop_to_axis, unused_axis)
 
         sub_split_sizes = []
@@ -345,13 +347,13 @@ class Descript:
                     f"Inner loop on {axis} isn't vectorized but an outer one is."
                 )
 
-    def _check_tile_divisible(
+    def _check_tile_size(
         self,
         sched: dict[str, Any],
         last_sizes: dict[str, int],
         current_split_size: dict[str, int] = dict(),
     ) -> None:
-        """Procedure that check for each axis if the inner tiles are dividers of outer tiles"""
+        """Procedure that check for each axis if the inner tiles are smaller than the outer tiles"""
         tiles = sched["tiles"]
 
         for axis, tile in tiles.items():
@@ -359,14 +361,13 @@ class Descript:
                 if axis not in last_sizes.keys():  # First tile tile_size found
                     last_sizes[axis] = tile_size
 
-                elif last_sizes[axis] % tile_size != 0:
+                elif last_sizes[axis] < tile_size != 0:
                     raise Exception(
-                        f"Outer tile is not divisible by inner tile on axis {axis}"
+                        f"Outer tile is smaller than inner tile on axis {axis}"
                     )
 
                 if (
-                    axis in current_split_size
-                    and current_split_size[axis] % tile_size != 0
+                    axis in current_split_size and current_split_size[axis] < tile_size
                 ):  # Try to create tile that do not fit in the current split
                     raise Exception(
                         f"Current split on axis {axis} of size {current_split_size[axis]} cannot support tiles of size {tile_size}"

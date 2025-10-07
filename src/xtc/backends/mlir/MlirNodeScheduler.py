@@ -47,7 +47,7 @@ class MlirNodeScheduler:
 
     def mlir_node_schedule(self) -> MlirNodeSchedule:
         if not self.permutation:
-            self.permutation["."] = self.get_default_interchange(".")
+            self.permutation[DEFAULT_ROOT] = self.get_default_interchange(DEFAULT_ROOT)
 
         return MlirNodeSchedule(
             node_name=self.node_name,
@@ -75,6 +75,11 @@ class MlirNodeScheduler:
                 dim_name = list(v.keys())[tile_level]
                 ret.append(dim_name)
         return ret
+
+    def set_dims(self, dims: list[str]) -> None:
+        assert len(dims) == len(self.dims)
+        self.dims = dims[:]
+        self.tiles = {k: {} for k in self.dims}
 
     def split(
         self, dim: str, segments: dict[str, int], root: str = DEFAULT_ROOT

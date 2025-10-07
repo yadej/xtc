@@ -6,6 +6,7 @@
 
 import argparse
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from xdsl.dialects import func, builtin
 from xdsl.ir import Operation
@@ -61,7 +62,6 @@ def main():
     graph_scheduler = graph_backend.get_scheduler(nodes_schedulers=schedulers)
     final_schedule = graph_scheduler.schedule()
 
-    dump_file = Path(args.filename).stem
     print_source = args.print_source_ir or not any(
         [
             args.evaluate,
@@ -71,41 +71,44 @@ def main():
         ]
     )
 
-    compiler_args = {
-        "mlir_install_dir": args.llvm_dir,
-        "to_disassemble": graph_backend.payload_name,
-        "print_source_ir": print_source,
-        "print_transformed_ir": args.print_transformed_ir,
-        "print_lowered_ir": args.print_lowered_ir,
-        "print_assembly": args.print_assembly,
-        "visualize_jumps": not args.hide_jumps,
-        "color": args.color,
-        "debug": args.debug,
-        "dump_file": dump_file,
-        "arch": args.arch,
-        "cpu": args.cpu,
-        "vectors_size": args.vectors_size,
-    }
+    with TemporaryDirectory() as tdir:
+        dump_file = str(Path(tdir) / Path(args.filename).stem)
 
-    if args.evaluate:
-        compiler_args["shared_lib"] = True
+        compiler_args = {
+            "mlir_install_dir": args.llvm_dir,
+            "to_disassemble": graph_backend.payload_name,
+            "print_source_ir": print_source,
+            "print_transformed_ir": args.print_transformed_ir,
+            "print_lowered_ir": args.print_lowered_ir,
+            "print_assembly": args.print_assembly,
+            "visualize_jumps": not args.hide_jumps,
+            "color": args.color,
+            "debug": args.debug,
+            "dump_file": dump_file,
+            "arch": args.arch,
+            "cpu": args.cpu,
+            "vectors_size": args.vectors_size,
+        }
 
-    compiler = graph_backend.get_compiler(**compiler_args)
-    module = compiler.compile(final_schedule)
+        if args.evaluate:
+            compiler_args["shared_lib"] = True
 
-    if args.evaluate:
-        if args.huge_pages:
-            NDArray.set_alloc_alignment(2 * 1024 * 1024)
-        else:
-            NDArray.set_alloc_alignment(256)
-        evaluator = module.get_evaluator(
-            init_zero=args.init_zero,
-            min_repeat_ms=100,
-        )
-        res, code, err = evaluator.evaluate()
-        if code != 0:
-            raise RuntimeError(f"Evaluation failed: {err}")
-        print(min(res))
+        compiler = graph_backend.get_compiler(**compiler_args)
+        module = compiler.compile(final_schedule)
+
+        if args.evaluate:
+            if args.huge_pages:
+                NDArray.set_alloc_alignment(2 * 1024 * 1024)
+            else:
+                NDArray.set_alloc_alignment(256)
+            evaluator = module.get_evaluator(
+                init_zero=args.init_zero,
+                min_repeat_ms=100,
+            )
+            res, code, err = evaluator.evaluate()
+            if code != 0:
+                raise RuntimeError(f"Evaluation failed: {err}")
+            print(min(res))
 
 
 def build_node_scheduler(

@@ -2,7 +2,7 @@
 # REQUIRES: module_tvm
 
 import xtc.graphs.xtc.op as O
-from xtc.backends.tvm import Backend
+from xtc.backends.tvm import TVMBackend as Backend
 
 I, J, K, dtype = 4, 32, 512, "float32"
 a = O.tensor((I, K), dtype, name="A")
@@ -17,7 +17,7 @@ print(graph)
 
 impl = Backend(graph, always_vectorize=False, no_alias=True)
 
-sch = impl.get_scheduler(default_node="matmul")
+sch = impl.get_scheduler(nodes=["matmul"])
 sch.tile("i", {"i1": 2})
 sch.tile("j", {"j1": 16})
 sch.interchange(["k", "i", "j", "i1", "j1"])
