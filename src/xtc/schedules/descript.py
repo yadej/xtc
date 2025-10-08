@@ -337,14 +337,13 @@ class Descript:
         vectorize: list[str] = sched["vectorize"]
         interchange: list[str] = sched["interchange"]
 
+        vect_above = False
         for loop_name in interchange:
-            axis = loop_to_axis[loop_name]
-            if loop_name in vectorize and axis not in knowned_vectorized_axis:
-                knowned_vectorized_axis.add(axis)
-
-            elif loop_name not in vectorize and axis in knowned_vectorized_axis:
+            if loop_name in vectorize:
+                vect_above = True
+            elif vect_above:
                 raise Exception(
-                    f"Inner loop on {axis} isn't vectorized but an outer one is."
+                    f"Inner loop {loop_name} isn't vectorized but an outer one is."
                 )
 
     def _check_tile_size(

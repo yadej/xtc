@@ -15,4 +15,4 @@ func.func @matmul(%A: memref<256x512xf64>, %B: memref<512x256xf64>, %C: memref<2
 	outs(%C: memref<256x256xf64>)
 	return
 }
-// CHECK:  Inner loop on k isn't vectorized but an outer one is.
+// CHECK:  Inner loop k0 isn't vectorized but an outer one is.
