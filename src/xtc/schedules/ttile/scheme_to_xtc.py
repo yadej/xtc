@@ -704,6 +704,10 @@ def launch_and_measure_scheme(
 # 4) Launch scheme execution & measurement through the XTC graph interface (in Python)
 # Inspired from the "test_conv2d_r181_mlir.py" file from XTC
 
+# List of time/cycle pmu counters, to trigger "peak_perf" computation
+ltime_counter_names = ["time", "clocks"]
+lcycles_counter_names = ["cycles", "cpu_clk_thread_unhalted:thread_p"]
+
 
 # Schedule to be specified here (convert Ttile to TVM-like instructions)
 # Note: "xrc/itf/schd/scheduler.py"
@@ -851,10 +855,11 @@ def launch_and_measure_scheme_graph_interf(
         res_measurement[pmu_counters[i]] = float(results[i])
 
     # Peak_perf computation:
-    #  - We detect if we have "time" or "cpu_clk_thread_unhalted:thread_p" in res_measurement
+    #  - We detect if we have a time/cycle counter in res_measurement
     #    If we have multiple of them, then the first one will be taken as reference
     #  - Then, we compute the peak_perf from this value (depending if it is time or number of cycles)
-    ltime_cycles_counter_names = ["time", "cpu_clk_thread_unhalted:thread_p"]
+    ltime_cycles_counter_names = ltime_counter_names + lcycles_counter_names
+
     i_time_ref = -1
     for i in range(len(pmu_counters)):
         if pmu_counters[i] in ltime_cycles_counter_names:
@@ -863,7 +868,7 @@ def launch_and_measure_scheme_graph_interf(
 
     # One of the counter is time or num_cycle => compute the peak_perf from it
     if i_time_ref >= 0:
-        if pmu_counters[i_time_ref] == "time":  # If the counter is time
+        if pmu_counters[i_time_ref] in ltime_counter_names:  # If the counter is time
             time = res_measurement[pmu_counters[i_time_ref]]
 
             # Get the peak_perf
@@ -891,7 +896,9 @@ def launch_and_measure_scheme_graph_interf(
                 peak_perf * 100,
             )
 
-        elif "clk" in pmu_counters[i_time_ref]:  # If the counter is a num_cycle
+        elif (
+            pmu_counters[i_time_ref] in lcycles_counter_names
+        ):  # If the counter is a num_cycle
             cycles = res_measurement[pmu_counters[i_time_ref]]
 
             num_ops = compute_number_ops(comp, dsizes)
@@ -912,5 +919,8 @@ def launch_and_measure_scheme_graph_interf(
                 dtype,
                 peak_perf * 100,
             )
+        else:
+            # Logicaly should not reach this portion of the code
+            assert False
 
     return res_measurement
