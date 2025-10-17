@@ -7,7 +7,7 @@ from xtc.schedules.ttile.scheme_to_xtc import get_descr_sched, subst_dimname_xyh
 from xtc.schedules.ttile.scheme_to_xtc import build_xdsl_module_string_matmul, build_xdsl_module_string_conv
 from xtc.schedules.ttile.scheme_to_xtc import launch_and_measure_scheme, launch_and_measure_scheme_graph_interf
 
-
+from ttile_utils import requires_tvm
 
 # Test "get_descr_sched" (both modes)
 def test_get_descr_sched_mlir_loops_1():
@@ -243,6 +243,7 @@ def test_launch_and_measure_scheme_graph_interf_matmult_mlir():
 	return
 
 
+@requires_tvm
 def test_launch_and_measure_scheme_graph_interf_matmult_tvm():
 	comp = Computation(Computation_spec.MATMULT, 4)
 	machine = laptop_guillaume_machine
@@ -261,6 +262,7 @@ def test_launch_and_measure_scheme_graph_interf_matmult_tvm():
 
 
 # Test "launch_and_measure_scheme_graph_interf" on a conv
+@requires_tvm
 def test_launch_and_measure_scheme_graph_interf_conv_mlir():
 	comp = Computation(Computation_spec.CONV, 4)  # f32
 	machine = laptop_guillaume_machine
@@ -279,6 +281,7 @@ def test_launch_and_measure_scheme_graph_interf_conv_mlir():
 
 	return
 
+@requires_tvm
 def test_launch_and_measure_scheme_graph_interf_conv_tvm():
 	comp = Computation(Computation_spec.CONV, 4)  # f32
 	machine = laptop_guillaume_machine
@@ -297,6 +300,7 @@ def test_launch_and_measure_scheme_graph_interf_conv_tvm():
 	return
 
 #   ... With another data type
+@requires_tvm
 def test_launch_and_measure_scheme_graph_interf_conv_tvm_f64():
 	comp = Computation(Computation_spec.CONV, 8)  # f64
 	machine = laptop_guillaume_machine
@@ -333,6 +337,7 @@ def test_launch_and_measure_scheme_graph_interf_matmul_partial_parall():
 	return
 
 #   ... With pmu_counters
+@requires_tvm
 def test_launch_and_measure_scheme_graph_interf_pmu_counters():
   comp = Computation(Computation_spec.MATMULT, 4)
   machine = laptop_guillaume_machine

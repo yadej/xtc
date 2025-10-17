@@ -39,8 +39,6 @@ from xtc.schedules.ttile.scheme import (
 # Backends
 import xtc.graphs.xtc.op as O
 from xtc.itf.back.backend import Backend
-from xtc.backends.mlir.MlirGraphBackend import MlirGraphBackend as MlirBackend
-from xtc.backends.tvm import TVMBackend as TVMBackend
 
 from xtc.schedules.descript import descript_scheduler
 
@@ -806,10 +804,12 @@ def launch_and_measure_scheme_graph_interf(
 
     # Backend
     if backend == "mlir":
-        impl_backend: MlirBackend | TVMBackend = MlirBackend(
-            graph, always_vectorize=True, no_alias=True
-        )
+        from xtc.backends.mlir import Backend as MlirBackend
+
+        impl_backend = MlirBackend(graph, always_vectorize=True, no_alias=True)
     elif backend == "tvm":
+        from xtc.backends.tvm import Backend as TVMBackend
+
         impl_backend = TVMBackend(graph, always_vectorize=True, no_alias=True)
     else:
         raise ValueError(f"Unrecognized backend: {backend}")

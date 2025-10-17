@@ -6,6 +6,7 @@ from xtc.schedules.ttile.archi import pinocchio_machine, laptop_guillaume_machin
 from xtc.schedules.ttile.microkernel import generate_microkernels, launch_microkernel_testing
 from xtc.schedules.ttile.microkernel import load_microkernel_info, sort_microkernels_by_pperf
 
+from ttile_utils import requires_tvm
 
 # Note: we skip microkernel executions (because this is too long for unit test)
 
@@ -38,6 +39,7 @@ def test_microkernel_gen_matmult():
 
 # Test of the microkernel generation and measurement for matmult
 # WARNING - actual execution on a machine. This was done on "laptop_guillaume_machine"
+@requires_tvm
 def test_launch_microkernel_testing_matmult():
 	machine = laptop_guillaume_machine
 	comp = Computation(Computation_spec.MATMULT, 4)
