@@ -31,6 +31,7 @@ module = comp.compile(sched)
 
 pmu_counters = [
     "cycles",
+    "instructions",
 ]
 
 # Linux Perf counters
