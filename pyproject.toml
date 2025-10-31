@@ -1,7 +1,7 @@
 [project]
 name = "xtc"
 version = "0.2.dev1"
-dependencies = ['jinja2', 'matplotlib', 'numpy', 'ordered-set', 'py-cpuinfo', 'tqdm', 'typing_extensions', 'pyyaml','lit','filecheck','xdsl~=0.50.0']
+dependencies = ['jinja2', 'matplotlib', 'numpy', 'ordered-set', 'py-cpuinfo', 'tqdm', 'typing_extensions', 'pyyaml','lit','filecheck','xdsl~=0.54.0']
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
@@ -15,7 +15,7 @@ dev = [
     "mypy==1.15.0",
     "pytest",
     "pytest-xdist",
-    "pyright==1.1.403",
+    "pyright==1.1.407",
     "marimo==0.14.16",
 ]
 
@@ -79,5 +79,5 @@ exclude_also = [
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -n1"
+addopts = "-ra"
 testpaths = ["tests/pytest"]
