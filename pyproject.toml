@@ -20,6 +20,7 @@ dev = [
     "pytest-xdist",
     "pyright==1.1.407",
     "marimo==0.14.16",
+    "ruff==0.14.10",
 ]
 
 [tool.setuptools]
@@ -84,3 +85,18 @@ exclude_also = [
 minversion = "6.0"
 addopts = "-ra"
 testpaths = ["tests/pytest"]
+
+[tool.ruff]
+target-version = "py310"
+respect-gitignore = false
+exclude = [
+  ".venv",
+  "venv",
+  "build",
+  "dist",
+  "public",
+  "docs",
+  "tests",
+]
+line-length = 88
+indent-width = 4
