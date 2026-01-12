@@ -7,17 +7,31 @@ from __future__ import annotations
 from typing import Any
 from dataclasses import dataclass, field
 import re
+from typing_extensions import override
 from xtc.itf.schd.scheduler import Scheduler
 
 
-# =============================================================================
-# AST Types for Schedule Specification
-# =============================================================================
+class ScheduleParseError(RuntimeError):
+    """Raised when schedule parsing fails."""
+
+    pass
+
+
+class ScheduleInterpretError(RuntimeError):
+    """Raised when schedule interpretation fails."""
+
+    pass
+
+
+class ScheduleValidationError(RuntimeError):
+    """Raised when schedule validation fails."""
+
+    pass
 
 
 @dataclass(frozen=True)
 class Annotations:
-    """Annotations that can be applied to a loop.
+    """AST Type : annotations that can be applied to a loop.
 
     Attributes:
         unroll_factor: The unroll factor. None means "unroll fully" (use loop size).
@@ -35,26 +49,37 @@ class Annotations:
 
 @dataclass(frozen=True)
 class SplitDecl:
-    """A split declaration like 'axis[start:end]'."""
+    """AST Type: a split declaration like 'axis[start:end]'."""
 
     axis: str
     start: int | None
     end: int | None
     body: ScheduleSpec
 
+    @override
+    def __str__(self) -> str:
+        start_str = "" if self.start is None else str(self.start)
+        end_str = "" if self.end is None else str(self.end)
+        decl = f"{self.axis}[{start_str}:{end_str}]"
+        return decl
+
 
 @dataclass(frozen=True)
 class TileDecl:
-    """A tile declaration like 'axis#size'."""
+    """AST Type: a tile declaration like 'axis#size'."""
 
     axis: str
     size: int
     annotations: Annotations
 
+    @override
+    def __str__(self) -> str:
+        return f"{self.axis}#{self.size}"
+
 
 @dataclass(frozen=True)
 class AxisDecl:
-    """A direct axis reference."""
+    """AST Type: a direct axis reference."""
 
     axis: str
     annotations: Annotations
@@ -65,20 +90,15 @@ ScheduleItem = SplitDecl | TileDecl | AxisDecl
 
 @dataclass(frozen=True)
 class ScheduleSpec:
-    """The complete parsed schedule specification."""
+    """AST Type: the complete parsed schedule specification."""
 
     items: tuple[ScheduleItem, ...]
-
-
-# =============================================================================
-# Schedule Parser
-# =============================================================================
 
 
 class ScheduleParser:
     """Parses a dict-based schedule specification into an AST."""
 
-    _SPLIT_PATTERN = re.compile(r"^(.*)\[(?:(-\d+|\d*)?):(?:(-\d+|\d*)?)\]$")
+    _SPLIT_PATTERN = re.compile(r"^(.*)\[(-\d+|\d*)?:(-\d+|\d*)?\]$")
 
     def __init__(self, abstract_axis: list[str]):
         self.abstract_axis = abstract_axis
@@ -93,10 +113,9 @@ class ScheduleParser:
 
         return ScheduleSpec(items=tuple(items))
 
-    def _parse_declaration(
-        self, declaration: str, value: Any
-    ) -> ScheduleItem:
+    def _parse_declaration(self, declaration: str, value: Any) -> ScheduleItem:
         """Parse a single declaration into a ScheduleItem."""
+        assert isinstance(value, dict)
         # Try split declaration first (e.g., "axis[0:10]")
         if ":" in declaration:
             return self._parse_split(declaration, value)
@@ -111,12 +130,6 @@ class ScheduleParser:
     def _parse_split(self, declaration: str, value: dict) -> SplitDecl:
         """Parse a split declaration like 'axis[start:end]'."""
         axis_name, start, end = self._parse_split_syntax(declaration)
-        self._check_axis_existence(axis_name, declaration)
-
-        if not isinstance(value, dict):
-            raise ScheduleParseError(
-                f"`{declaration}`: split body must be a dict, got {type(value).__name__}"
-            )
 
         body = self.parse(value)
         return SplitDecl(axis=axis_name, start=start, end=end, body=body)
@@ -130,41 +143,23 @@ class ScheduleParser:
             )
 
         axis_name, size_str = parts
-        self._check_axis_existence(axis_name, declaration)
 
         try:
             size = int(size_str)
         except ValueError:
-            raise ScheduleParseError(
-                f"`{declaration}`: {size_str} is not an integer."
-            )
-
-        if size <= 0:
-            raise ScheduleParseError(
-                f"`{declaration}`: tile sizes should be strictly positive."
-            )
+            raise ScheduleParseError(f"`{declaration}`: {size_str} is not an integer.")
 
         annotations = self._parse_annotations(value, declaration)
         return TileDecl(axis=axis_name, size=size, annotations=annotations)
 
     def _parse_axis_ref(self, declaration: str, value: dict) -> AxisDecl:
         """Parse a direct axis reference."""
-        if declaration not in self.abstract_axis:
-            raise ScheduleParseError(
-                f"Axis {declaration} is not a defined axis (defined axis: {self.abstract_axis})."
-            )
 
         annotations = self._parse_annotations(value, declaration)
         return AxisDecl(axis=declaration, annotations=annotations)
 
-    def _parse_annotations(
-        self, value: dict[str, Any], context: str
-    ) -> Annotations:
+    def _parse_annotations(self, value: dict[str, Any], context: str) -> Annotations:
         """Parse annotation dict into Annotations object."""
-        if not isinstance(value, dict):
-            raise ScheduleParseError(
-                f"`{context}`: annotations must be a dict, got {type(value).__name__}"
-            )
 
         unroll_factor: int | None = None
         unroll_specified = False
@@ -173,11 +168,7 @@ class ScheduleParser:
 
         for key, param in value.items():
             if key == "unroll":
-                if param is not None and not isinstance(param, int):
-                    raise ScheduleParseError(
-                        f"`{context}`: unroll parameter must be int or None"
-                    )
-                unroll_factor = param  # None means "unroll fully"
+                unroll_factor = param
                 unroll_specified = True
             elif key == "vectorize":
                 if param is not None:
@@ -192,9 +183,7 @@ class ScheduleParser:
                     )
                 parallelize = True
             else:
-                raise ScheduleParseError(
-                    f"Unknown annotation on {context}: {key}"
-                )
+                raise ScheduleParseError(f"Unknown annotation on {context}: {key}")
 
         return Annotations(
             unroll_factor=unroll_factor,
@@ -215,30 +204,6 @@ class ScheduleParser:
         x = int(x_str) if x_str else None
         y = int(y_str) if y_str else None
         return prefix, x, y
-
-    def _check_axis_existence(self, axis: str, context: str) -> None:
-        """Check that an axis is defined."""
-        if axis not in self.abstract_axis:
-            raise ScheduleParseError(
-                f"Axis {axis} is not a defined axis (defined axis: {self.abstract_axis})."
-            )
-
-
-class ScheduleParseError(RuntimeError):
-    """Raised when schedule parsing fails."""
-
-    pass
-
-
-class ScheduleInterpretError(RuntimeError):
-    """Raised when schedule interpretation fails."""
-
-    pass
-
-
-# =============================================================================
-# Schedule Interpreter
-# =============================================================================
 
 
 class ScheduleInterpreter:
@@ -296,6 +261,7 @@ class ScheduleInterpreter:
     ) -> None:
         """Interpret a split declaration."""
         axis_name = item.axis
+        self._check_axis_existence(axis_name)
         x = item.start
         y = item.end
 
@@ -335,11 +301,14 @@ class ScheduleInterpreter:
         sizes: dict[str, int],
     ) -> str:
         """Interpret a tile declaration. Returns the loop name."""
-        axis_name = item.axis
-        tile_num = len(slice.tiles[axis_name])
-        loop_name = f"{axis_name}{tile_num}"
-
-        slice.tiles[axis_name][loop_name] = item.size
+        self._check_axis_existence(item.axis)
+        tile_num = len(slice.tiles[item.axis])
+        loop_name = f"{item.axis}{tile_num}"
+        if item.size <= 0:
+            raise ScheduleInterpretError(
+                f"`{item}`: tile sizes should be strictly positive."
+            )
+        slice.tiles[item.axis][loop_name] = item.size
         sizes[loop_name] = item.size
         interchange.append(loop_name)
 
@@ -352,7 +321,10 @@ class ScheduleInterpreter:
     ) -> str:
         """Interpret a direct axis reference. Returns the loop name."""
         axis_name = item.axis
+        self._check_axis_existence(axis_name)
 
+        # Unreachable when built from a Python dict (because keys
+        # can't be duplicated).
         if axis_name in interchange:
             raise ScheduleInterpretError(
                 f"Axis {axis_name} is scheduled twice (or more)."
@@ -360,6 +332,13 @@ class ScheduleInterpreter:
 
         interchange.append(axis_name)
         return axis_name
+
+    def _check_axis_existence(self, axis: str) -> None:
+        """Check that an axis is defined."""
+        if axis not in self.abstract_axis:
+            raise ScheduleInterpretError(
+                f"Axis {axis} is not a defined axis (defined axis: {self.abstract_axis})."
+            )
 
     def _apply_annotations(
         self,
@@ -382,10 +361,6 @@ class ScheduleInterpreter:
                 raise ScheduleInterpretError(
                     f'`{{"unroll" = {unroll_factor}}}`: unroll parameter should be strictly positive.'
                 )
-            elif loop_name in sizes and sizes[loop_name] < unroll_factor:
-                raise ScheduleInterpretError(
-                    f'`{{"unroll" = {unroll_factor}}}`: unroll factor should be smaller than {sizes[loop_name]}.'
-                )
             slice.unroll[loop_name] = unroll_factor
 
         if annotations.vectorize:
@@ -401,38 +376,39 @@ class ScheduleInterpreter:
         x: int,
     ) -> None:
         """Check that split intervals are valid and contiguous."""
-        axis_name = item.axis
-        y = item.end
-        # Reconstruct the declaration string for error messages
-        start_str = "" if item.start is None else str(item.start)
-        end_str = "" if item.end is None else str(item.end)
-        decl = f"{axis_name}[{start_str}:{end_str}]"
 
         if cut is None:
-            raise ScheduleInterpretError(f"{decl}: {axis_name} already covered.")
+            raise ScheduleInterpretError(f"{item}: {item.axis} already covered.")
 
         if x > cut:
             raise ScheduleInterpretError(
-                f"{decl}: splitting doesn't fully cover {axis_name} (jumps from {cut} to {x})."
+                f"{item}: splitting doesn't fully cover {item.axis} (jumps from {cut} to {x})."
             )
         elif x < cut:
             raise ScheduleInterpretError(
-                f"{decl}: the segment begins at {x} but the previous one ends at {cut}."
+                f"{item}: the segment begins at {x} but the previous one ends at {cut}."
             )
 
-        if y is not None and x >= y:
+        if item.end is not None and x >= item.end:
             raise ScheduleInterpretError(
-                f"{decl}: the ending point should be greater than the starting point."
+                f"{item}: the ending point should be greater than the starting point."
             )
-
-
-# =============================================================================
-# Loop Nest Data Structures
-# =============================================================================
 
 
 @dataclass
 class LoopsDimsMapper:
+    """Maps loop names to their corresponding axis names.
+
+    This class tracks the relationship between loop identifiers (from tiling
+    and splitting transformations) and the original dimension axes they
+    derive from.
+
+    Attributes:
+        tiles_to_axis: Maps tile loop names to their parent axis.
+        splits_to_axis: Maps split loop names to their parent axis.
+        dims: List of original dimension names.
+    """
+
     tiles_to_axis: dict[str, str]
     splits_to_axis: dict[str, str]
     dims: list[str]
@@ -472,6 +448,24 @@ class LoopsDimsMapper:
 
 @dataclass
 class LoopNestSlice:
+    """Represents a single slice of a loop nest with its transformations.
+
+    A slice describes the loops attached to a single root and
+    contains all the scheduling transformations applied to these loops.
+
+    Attributes:
+        root: Identifier of the the slice (either the base operation or
+            the content of a split).
+        tiles: Tiling configuration per axis. Maps axis names to dicts of
+            tile loop names and their sizes.
+        splits: Split configuration per axis. Maps axis names to dicts of
+            split loop names and their starting positions.
+        interchange: Ordered list of loop names defining the loop order.
+        vectorize: List of loops to vectorize.
+        parallelize: List of loops to parallelize.
+        unroll: Maps loop names to their unroll factors.
+    """
+
     root: str
     tiles: dict[str, dict[str, int]]
     splits: dict[str, dict[str, int]] = field(default_factory=dict)
@@ -503,6 +497,16 @@ class LoopNestSlice:
 
 @dataclass
 class LoopNest:
+    """Represents a complete loop nest structure for scheduling.
+
+    A loop nest contains abstract dimensions and a collection of slices/
+    It provides validation to ensure consistency across all slices.
+
+    Attributes:
+        abstract_dims: List of abstract dimension names for the loop nest.
+        slices: List of LoopNestSlice objects, one per scheduled operation.
+    """
+
     abstract_dims: list[str]
     slices: list[LoopNestSlice] = field(default_factory=list)
 
@@ -525,7 +529,7 @@ class LoopNest:
         mapper = LoopsDimsMapper.build_from_slices(self.slices)
         for dim in self.abstract_dims:
             if dim not in mapper.dims:
-                raise RuntimeError(f"{dim} defined but never used")
+                raise ScheduleValidationError(f"{dim} defined but never used")
 
     def _check_vectorization_consistency(self):
         for sched in self.slices:
@@ -534,7 +538,7 @@ class LoopNest:
                 if loop_name in sched.vectorize:
                     vect_above = True
                 elif vect_above:
-                    raise RuntimeError(
+                    raise ScheduleValidationError(
                         f"Inner loop {loop_name} isn't vectorized but an outer one is."
                     )
 
@@ -549,7 +553,7 @@ class LoopNest:
                     axis = mapper.tiles_to_axis[loop_name]
                     size = sched.tiles_to_sizes[loop_name]
                     if axis not in seen_axes:
-                        raise RuntimeError(
+                        raise ScheduleValidationError(
                             f"""
                             `{axis}#{size}`: {axis} has not been materialized yet.
                             """
@@ -569,6 +573,7 @@ class LoopNest:
                     | current_size_of_split
                     | current_size_of_tile
                 )
+                loop_size = None
                 if loop_name in mapper.dims:
                     if loop_name not in current_size_of_split:
                         current_size_of_split[loop_name] = None
@@ -594,13 +599,20 @@ class LoopNest:
                     )
                     current_size_of_split[axis] = loop_size
 
+                if loop_name in sched.unroll:
+                    unroll_factor = sched.unroll[loop_name]
+                    if loop_size and loop_size < unroll_factor:
+                        raise ScheduleValidationError(
+                            f'`{{"unroll" = {unroll_factor}}}`: unroll factor should be smaller than {loop_size}.'
+                        )
+
     @staticmethod
     def _must_be_smaller_routine(
         new_size: int, current_sizes: dict[str, int | None], loop_name: str, axis: str
     ):
         old_size = current_sizes[axis]
         if old_size is not None and new_size > old_size:
-            raise RuntimeError(
+            raise ScheduleValidationError(
                 f"""
                 Inner loop {loop_name} on axis {axis} must be smaller than outer loop.
                 """
@@ -652,7 +664,7 @@ class Descript:
         Raises:
             ScheduleParseError: If the spec cannot be parsed.
             ScheduleInterpretError: If the spec cannot be interpreted.
-            RuntimeError: If the resulting schedule is invalid.
+            ScheduleValidationError: If the resulting schedule is invalid.
         """
         # Parse the specification into an AST
         parser = ScheduleParser(self.abstract_axis)
