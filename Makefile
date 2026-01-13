@@ -68,5 +68,8 @@ format-license:
 claude:
 	scripts/llms/init_claude.py README.md "Links" "System requirements" "AI assistants" > CLAUDE.md
 
-.PHONY: help test check check-lit-all check-lit check-lit-c check-lit-nvpgu check-pytest check-type check-pyright check-mypy check-format check-format-ruff check-license check-banwords format format-ruff format-license
+run-tutorial:
+	marimo run docs/tutorials/xtc_101.py
+
+.PHONY: help test check check-lit-all check-lit check-lit-c check-lit-nvpgu check-pytest check-type check-pyright check-mypy check-format check-format-ruff check-license check-banwords format format-ruff format-license run-tutorial
 .SUFFIXES:

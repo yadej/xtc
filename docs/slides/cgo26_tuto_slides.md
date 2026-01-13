@@ -200,3 +200,7 @@ sch.descript({
 
 Paper: https://arxiv.org/abs/2512.16512
 GitHub: https://github.com/xtc-tools/xtc
+
+Setup: follow the README.md
+
+Tutorial: once setup is done, run `make run-tutorial`
