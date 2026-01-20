@@ -472,8 +472,8 @@ class MlirOperatorRelu(MlirOperator):
 
 class MlirOperatorPad(MlirOperator):
     DEFAULT_NAME = "pad"
-    AXES = "ij"
-    KINDS = "PP"
+    AXES = "ijklmnopqrstuvwxyz"
+    KINDS = "PPPPPPPPPPPPPPPPPP"
 
     @override
     def dims(self, kind: str = "") -> tuple[str, ...]:
@@ -481,7 +481,8 @@ class MlirOperatorPad(MlirOperator):
 
     @override
     def dims_sizes(self) -> dict[str, int]:
-        return {f"d{i}": size for i, size in enumerate(self.args[:-1])}
+        assert len(self.args[:-1]) <= len(self.AXES)
+        return {name: size for name, size in zip(self.AXES, self.args[:-1])}
 
     @override
     def generate_op(
@@ -581,14 +582,14 @@ class MlirOperatorPad(MlirOperator):
 
 class MlirOperatorPad2D(MlirOperatorPad):
     DEFAULT_NAME = "pad2d"
-    AXES = "ij"
-    KINDS = "PP"
+    AXES = "bhwc"
+    KINDS = "PPPP"
 
 
-class MlirOperatorUnpad2D(MlirOperator):
-    DEFAULT_NAME = "unpad2d"
-    AXES = "ij"
-    KINDS = "PP"
+class MlirOperatorUnpad(MlirOperator):
+    DEFAULT_NAME = "unpad"
+    AXES = "ijklmnopqrstuvwxyz"
+    KINDS = "PPPPPPPPPPPPPPPPPP"
 
     @override
     def dims(self, kind: str = "") -> tuple[str, ...]:
@@ -596,7 +597,8 @@ class MlirOperatorUnpad2D(MlirOperator):
 
     @override
     def dims_sizes(self) -> dict[str, int]:
-        return {f"d{i}": size for i, size in enumerate(self.args[:-1])}
+        assert len(self.args[:-1]) <= len(self.AXES)
+        return {name: size for name, size in zip(self.AXES, self.args[:-1])}
 
     @override
     def generate_op(
@@ -605,24 +607,30 @@ class MlirOperatorUnpad2D(MlirOperator):
         dtype = self.args[-1]
         dims_values = list(self.args[:-1])
         padding = self.attrs["padding"]
-        axis1, axis2 = tuple(padding.keys())
-        hb, he = padding[axis1]
-        wb, we = padding[axis2]
+        if isinstance(padding, dict):
+            dims_values_before_unpad = list(dims_values)
+            for i, pad_value in padding.items():
+                dims_values_before_unpad[i] += sum(pad_value)
+        else:
+            dims_values_before_unpad = [
+                dim_value + sum(padding) for dim_value in dims_values
+            ]
         elt_type = {"float32": f32, "float64": f64}[dtype]
         if block is None:
-            ha, wa = dims_values[axis1] + hb + he, dims_values[axis2] + wb + we
-            dims_values_after_unpad = list(dims_values)
-            dims_values_after_unpad[axis1], dims_values_after_unpad[axis2] = ha, wa
             ops_types = [
                 MemRefType(elt_type, shape)
-                for shape in [dims_values_after_unpad, dims_values]
+                for shape in [dims_values_before_unpad, dims_values]
             ]
             block = Block(arg_types=ops_types)
             args = block.args
         assert len(args) == 2
         assert all(isinstance(arg.type, MemRefType) for arg in args)
-        offsets = [0 for _ in self.args[:-1]]
-        offsets[axis1], offsets[axis2] = hb, wb
+        if isinstance(padding, dict):
+            offsets = [0 for _ in self.args[:-1]]
+            for i, (pad_b, _) in padding.items():
+                offsets[i] = pad_b
+        else:
+            offsets = [padding[0] for _ in self.args[:-1]]
         sizes = dims_values
         strides = [1 for _ in self.args[:-1]]
         with ImplicitBuilder(block):
@@ -653,12 +661,12 @@ class MlirOperatorUnpad2D(MlirOperator):
     @override
     def inputs_dims(self) -> tuple[tuple[int, ...], ...]:
         padding = self.attrs["padding"]
-        axis1, axis2 = tuple(padding.keys())
-        hb, he = padding[axis1]
-        wb, we = padding[axis2]
         inp_dims = list(self.args[:-1])
-        inp_dims[axis1] = inp_dims[axis1] + hb + he
-        inp_dims[axis2] = inp_dims[axis2] + wb + we
+        if isinstance(padding, dict):
+            for axis, (pad_b, pad_a) in padding.items():
+                inp_dims[axis] += pad_b + pad_a
+        else:
+            inp_dims = [inp_dim + sum(padding) for inp_dim in inp_dims]
         return (tuple(inp_dims),)
 
     @override
@@ -686,5 +694,5 @@ class MlirOperators:
     conv2d = MlirOperatorConv2D
     relu = MlirOperatorRelu
     pad2d = MlirOperatorPad2D
-    unpad2d = MlirOperatorUnpad2D
+    unpad = MlirOperatorUnpad
     pad = MlirOperatorPad

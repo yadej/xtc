@@ -581,8 +581,8 @@ class TVMOperatorConv2D(TVMOperator):
 
 class TVMOperatorPad(TVMOperator):
     DEFAULT_NAME = "pad"
-    AXES = "ij"
-    KINDS = "PP"
+    AXES = "ijklmnopqrstuvwxyz"
+    KINDS = "PPPPPPPPPPPPPPPPPP"
 
     def __init__(
         self, args: tuple[Any, ...], attrs: dict[str, Any], name: str | None = None
@@ -596,7 +596,8 @@ class TVMOperatorPad(TVMOperator):
 
     @override
     def dims_sizes(self) -> dict[str, int]:
-        return {f"d{i}": size for i, size in enumerate(self.args[:-1])}
+        assert len(self.args[:-1]) <= len(self.AXES)
+        return {name: size for name, size in zip(self.AXES, self.args[:-1])}
 
     @override
     def generate_op(
@@ -687,8 +688,8 @@ class TVMOperatorPad(TVMOperator):
 
 class TVMOperatorPad2D(TVMOperatorPad):
     DEFAULT_NAME = "pad2d"
-    AXES = "ij"
-    KINDS = "PP"
+    AXES = "bhwc"
+    KINDS = "PPPP"
 
     def __init__(
         self, args: tuple[Any, ...], attrs: dict[str, Any], name: str | None = None
@@ -697,10 +698,10 @@ class TVMOperatorPad2D(TVMOperatorPad):
         super().__init__(args, attrs, name)
 
 
-class TVMOperatorUnpad2D(TVMOperator):
-    DEFAULT_NAME = "unpad2d"
-    AXES = "ij"
-    KINDS = "PP"
+class TVMOperatorUnpad(TVMOperator):
+    DEFAULT_NAME = "unpad"
+    AXES = "ijklmnopqrstuvwxyz"
+    KINDS = "PPPPPPPPPPPPPPPPPP"
 
     def __init__(
         self, args: tuple[Any, ...], attrs: dict[str, Any], name: str | None = None
@@ -714,7 +715,8 @@ class TVMOperatorUnpad2D(TVMOperator):
 
     @override
     def dims_sizes(self) -> dict[str, int]:
-        return {f"d{i}": size for i, size in enumerate(self.args[:-1])}
+        assert len(self.args[:-1]) <= len(self.AXES)
+        return {name: size for name, size in zip(self.AXES, self.args[:-1])}
 
     @override
     def generate_op(
@@ -723,21 +725,26 @@ class TVMOperatorUnpad2D(TVMOperator):
         dtype = self.args[-1]
         dims_values = list(self.args[:-1])
         padding = self.attrs["padding"]
-        axis1, axis2 = tuple(padding.keys())
-        hb, he = padding[axis1]
-        wb, we = padding[axis2]
-        ha, wa = dims_values[axis1] + hb + he, dims_values[axis2] + wb + we
         if inputs is None:
-            dims_values_after_unpad = list(dims_values)
-            dims_values_after_unpad[axis1], dims_values_after_unpad[axis2] = ha, wa
-            A = te.placeholder(tuple(dims_values_after_unpad), name="A", dtype=dtype)
+            dims_values_before_unpad = list(dims_values)
+            if isinstance(padding, dict):
+                for axis, pad in padding.items():
+                    dims_values_before_unpad[axis] += sum(pad)
+            else:
+                dims_values_before_unpad = [
+                    dims_value + sum(padding) for dims_value in dims_values
+                ]
+            A = te.placeholder(tuple(dims_values_before_unpad), name="A", dtype=dtype)
         else:
             (A,) = inputs
 
         def get_indexes(*args: int) -> tuple[int, ...]:
             indexes = list(args)
-            indexes[axis1] += hb
-            indexes[axis2] += wb
+            if isinstance(padding, dict):
+                for axis, (pad_b, _) in padding.items():
+                    indexes[axis] += pad_b
+            else:
+                indexes = [index + padding[0] for index in indexes]
             return tuple(indexes)
 
         O = te.compute(
@@ -750,12 +757,12 @@ class TVMOperatorUnpad2D(TVMOperator):
     @override
     def inputs_dims(self) -> tuple[tuple[int, ...], ...]:
         padding = self.attrs["padding"]
-        axis1, axis2 = tuple(padding.keys())
-        hb, he = padding[axis1]
-        wb, we = padding[axis2]
         inp_dims = list(self.args[:-1])
-        inp_dims[axis1] += hb + he
-        inp_dims[axis2] += wb + we
+        if isinstance(padding, dict):
+            for axis, pad in padding.items():
+                inp_dims[axis] += sum(pad)
+        else:
+            inp_dims = [inp_dim + sum(padding) for inp_dim in inp_dims]
         return (tuple(inp_dims),)
 
     @override
@@ -861,6 +868,6 @@ class TVMOperators:
     relu = TVMOperatorRelu
     conv2d = TVMOperatorConv2D
     pad2d = TVMOperatorPad2D
-    unpad2d = TVMOperatorUnpad2D
+    unpad = TVMOperatorUnpad
     pad = TVMOperatorPad
     transpose = TVMOperatorTranspose

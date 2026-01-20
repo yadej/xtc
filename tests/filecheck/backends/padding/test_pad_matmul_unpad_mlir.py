@@ -1,5 +1,5 @@
 # RUN: python %s 2>&1 | filecheck %s
-# REQUIRES: module_tvm
+# REQUIRES: module_mlir
 
 import xtc.graphs.xtc.op as O
 from xtc.backends.mlir import Backend
@@ -12,7 +12,7 @@ with O.graph(name="pad_matmul_unpad") as gb:
     p1 = O.pad2d(a, padding=(0, 2), axes=(-2, -1), name="A_pad")
     p2 = O.pad2d(b, padding=(0, 2), axes=(-2, -1), name="B_pad")
     m_pad = O.matmul(p1, p2, name="matmul_padded")
-    O.unpad2d(m_pad, padding=(0, 2), axes=(-2, -1), name="C")
+    O.unpad(m_pad, padding={-2: (0, 2), -1: (0, 2)}, name="C")
 graph = gb.graph
 print(graph)
 
@@ -59,24 +59,24 @@ print(f"CODE: {res}")
 # CHECK-NEXT:    transform.named_sequence @__transform_main(%arg0: !transform.any_op {transform.readonly}) {
 # CHECK-NEXT:      %0 = transform.structured.match attributes {__xtc_id_A_pad_0_} in %arg0 : (!transform.any_op) -> !transform.any_op
 # CHECK-NEXT:      %tiled_linalg_op, %loops = transform.structured.tile_using_for %0 tile_sizes [1, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-# CHECK-NEXT:      transform.annotate %loops "./d0" : !transform.any_op
+# CHECK-NEXT:      transform.annotate %loops "./b" : !transform.any_op
 # CHECK-NEXT:      %tiled_linalg_op_0, %loops_1 = transform.structured.tile_using_for %tiled_linalg_op tile_sizes [0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-# CHECK-NEXT:      transform.annotate %loops_1 "./d1" : !transform.any_op
+# CHECK-NEXT:      transform.annotate %loops_1 "./h" : !transform.any_op
 # CHECK-NEXT:      %1 = transform.structured.match attributes {__xtc_id_A_pad_} in %arg0 : (!transform.any_op) -> !transform.any_op
 # CHECK-NEXT:      %tiled_linalg_op_2, %loops_3 = transform.structured.tile_using_for %1 tile_sizes [1, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-# CHECK-NEXT:      transform.annotate %loops_3 "./d0" : !transform.any_op
+# CHECK-NEXT:      transform.annotate %loops_3 "./b" : !transform.any_op
 # CHECK-NEXT:      %tiled_linalg_op_4, %loops_5 = transform.structured.tile_using_for %tiled_linalg_op_2 tile_sizes [0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-# CHECK-NEXT:      transform.annotate %loops_5 "./d1" : !transform.any_op
+# CHECK-NEXT:      transform.annotate %loops_5 "./h" : !transform.any_op
 # CHECK-NEXT:      %2 = transform.structured.match attributes {__xtc_id_B_pad_0_} in %arg0 : (!transform.any_op) -> !transform.any_op
 # CHECK-NEXT:      %tiled_linalg_op_6, %loops_7 = transform.structured.tile_using_for %2 tile_sizes [1, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-# CHECK-NEXT:      transform.annotate %loops_7 "./d0" : !transform.any_op
+# CHECK-NEXT:      transform.annotate %loops_7 "./b" : !transform.any_op
 # CHECK-NEXT:      %tiled_linalg_op_8, %loops_9 = transform.structured.tile_using_for %tiled_linalg_op_6 tile_sizes [0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-# CHECK-NEXT:      transform.annotate %loops_9 "./d1" : !transform.any_op
+# CHECK-NEXT:      transform.annotate %loops_9 "./h" : !transform.any_op
 # CHECK-NEXT:      %3 = transform.structured.match attributes {__xtc_id_B_pad_} in %arg0 : (!transform.any_op) -> !transform.any_op
 # CHECK-NEXT:      %tiled_linalg_op_10, %loops_11 = transform.structured.tile_using_for %3 tile_sizes [1, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-# CHECK-NEXT:      transform.annotate %loops_11 "./d0" : !transform.any_op
+# CHECK-NEXT:      transform.annotate %loops_11 "./b" : !transform.any_op
 # CHECK-NEXT:      %tiled_linalg_op_12, %loops_13 = transform.structured.tile_using_for %tiled_linalg_op_10 tile_sizes [0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-# CHECK-NEXT:      transform.annotate %loops_13 "./d1" : !transform.any_op
+# CHECK-NEXT:      transform.annotate %loops_13 "./h" : !transform.any_op
 # CHECK-NEXT:      %4 = transform.structured.match attributes {__xtc_id_matmul_padded_0_} in %arg0 : (!transform.any_op) -> !transform.any_op
 # CHECK-NEXT:      %tiled_linalg_op_14, %loops_15 = transform.structured.tile_using_for %4 tile_sizes [1, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 # CHECK-NEXT:      transform.annotate %loops_15 "./i" : !transform.any_op
@@ -91,9 +91,9 @@ print(f"CODE: {res}")
 # CHECK-NEXT:      transform.annotate %loops_23 "./k" : !transform.any_op
 # CHECK-NEXT:      %6 = transform.structured.match attributes {__xtc_id_C_} in %arg0 : (!transform.any_op) -> !transform.any_op
 # CHECK-NEXT:      %tiled_linalg_op_24, %loops_25 = transform.structured.tile_using_for %6 tile_sizes [1, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-# CHECK-NEXT:      transform.annotate %loops_25 "./d0" : !transform.any_op
+# CHECK-NEXT:      transform.annotate %loops_25 "./i" : !transform.any_op
 # CHECK-NEXT:      %tiled_linalg_op_26, %loops_27 = transform.structured.tile_using_for %tiled_linalg_op_24 tile_sizes [0, 1] : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-# CHECK-NEXT:      transform.annotate %loops_27 "./d1" : !transform.any_op
+# CHECK-NEXT:      transform.annotate %loops_27 "./j" : !transform.any_op
 # CHECK-NEXT:      transform.yield 
 # CHECK-NEXT:    }
 # CHECK-NEXT:  }
@@ -114,8 +114,8 @@ print(f"CODE: {res}")
 # CHECK-NEXT:        scf.for %arg4 = %c0_24 to %c16_25 step %c1_26 {
 # CHECK-NEXT:          %subview_27 = memref.subview %subview_23[0, %arg4] [1, 1] [1, 1] : memref<1x16xf32, strided<[16, 1], offset: ?>> to memref<1x1xf32, strided<[16, 1], offset: ?>>
 # CHECK-NEXT:          linalg.fill {__xtc_id_A_pad_0_} ins(%cst : f32) outs(%subview_27 : memref<1x1xf32, strided<[16, 1], offset: ?>>)
-# CHECK-NEXT:        } {"./d1"}
-# CHECK-NEXT:      } {"./d0"}
+# CHECK-NEXT:        } {"./h"}
+# CHECK-NEXT:      } {"./b"}
 # CHECK-NEXT:      %subview = memref.subview %alloca[0, 0] [14, 14] [1, 1] : memref<16x16xf32> to memref<14x14xf32, strided<[16, 1]>>
 # CHECK-NEXT:      %c0_0 = arith.constant 0 : index
 # CHECK-NEXT:      %c14 = arith.constant 14 : index
@@ -130,8 +130,8 @@ print(f"CODE: {res}")
 # CHECK-NEXT:          %subview_28 = memref.subview %subview_23[0, %arg4] [1, 1] [1, 1] : memref<1x14xf32, strided<[14, 1], offset: ?>> to memref<1x1xf32, strided<[14, 1], offset: ?>>
 # CHECK-NEXT:          %subview_29 = memref.subview %subview_24[0, %arg4] [1, 1] [1, 1] : memref<1x14xf32, strided<[16, 1], offset: ?>> to memref<1x1xf32, strided<[16, 1], offset: ?>>
 # CHECK-NEXT:          linalg.copy {__xtc_id_A_pad_} ins(%subview_28 : memref<1x1xf32, strided<[14, 1], offset: ?>>) outs(%subview_29 : memref<1x1xf32, strided<[16, 1], offset: ?>>)
-# CHECK-NEXT:        } {"./d1"}
-# CHECK-NEXT:      } {"./d0"}
+# CHECK-NEXT:        } {"./h"}
+# CHECK-NEXT:      } {"./b"}
 # CHECK-NEXT:      %alloca_2 = memref.alloca() {alignment = 256 : i64} : memref<16x16xf32>
 # CHECK-NEXT:      %cst_3 = arith.constant 0.000000e+00 : f32
 # CHECK-NEXT:      %c0_4 = arith.constant 0 : index
@@ -145,8 +145,8 @@ print(f"CODE: {res}")
 # CHECK-NEXT:        scf.for %arg4 = %c0_24 to %c16_25 step %c1_26 {
 # CHECK-NEXT:          %subview_27 = memref.subview %subview_23[0, %arg4] [1, 1] [1, 1] : memref<1x16xf32, strided<[16, 1], offset: ?>> to memref<1x1xf32, strided<[16, 1], offset: ?>>
 # CHECK-NEXT:          linalg.fill {__xtc_id_B_pad_0_} ins(%cst_3 : f32) outs(%subview_27 : memref<1x1xf32, strided<[16, 1], offset: ?>>)
-# CHECK-NEXT:        } {"./d1"}
-# CHECK-NEXT:      } {"./d0"}
+# CHECK-NEXT:        } {"./h"}
+# CHECK-NEXT:      } {"./b"}
 # CHECK-NEXT:      %subview_7 = memref.subview %alloca_2[0, 0] [14, 14] [1, 1] : memref<16x16xf32> to memref<14x14xf32, strided<[16, 1]>>
 # CHECK-NEXT:      %c0_8 = arith.constant 0 : index
 # CHECK-NEXT:      %c14_9 = arith.constant 14 : index
@@ -161,8 +161,8 @@ print(f"CODE: {res}")
 # CHECK-NEXT:          %subview_28 = memref.subview %subview_23[0, %arg4] [1, 1] [1, 1] : memref<1x14xf32, strided<[14, 1], offset: ?>> to memref<1x1xf32, strided<[14, 1], offset: ?>>
 # CHECK-NEXT:          %subview_29 = memref.subview %subview_24[0, %arg4] [1, 1] [1, 1] : memref<1x14xf32, strided<[16, 1], offset: ?>> to memref<1x1xf32, strided<[16, 1], offset: ?>>
 # CHECK-NEXT:          linalg.copy {__xtc_id_B_pad_} ins(%subview_28 : memref<1x1xf32, strided<[14, 1], offset: ?>>) outs(%subview_29 : memref<1x1xf32, strided<[16, 1], offset: ?>>)
-# CHECK-NEXT:        } {"./d1"}
-# CHECK-NEXT:      } {"./d0"}
+# CHECK-NEXT:        } {"./h"}
+# CHECK-NEXT:      } {"./b"}
 # CHECK-NEXT:      %alloca_11 = memref.alloca() {alignment = 256 : i64} : memref<16x16xf32>
 # CHECK-NEXT:      %cst_12 = arith.constant 0.000000e+00 : f32
 # CHECK-NEXT:      %c0_13 = arith.constant 0 : index
@@ -217,8 +217,8 @@ print(f"CODE: {res}")
 # CHECK-NEXT:          %subview_28 = memref.subview %subview_23[0, %arg4] [1, 1] [1, 1] : memref<1x14xf32, strided<[16, 1], offset: ?>> to memref<1x1xf32, strided<[16, 1], offset: ?>>
 # CHECK-NEXT:          %subview_29 = memref.subview %subview_24[0, %arg4] [1, 1] [1, 1] : memref<1x14xf32, strided<[14, 1], offset: ?>> to memref<1x1xf32, strided<[14, 1], offset: ?>>
 # CHECK-NEXT:          linalg.copy {__xtc_id_C_} ins(%subview_28 : memref<1x1xf32, strided<[16, 1], offset: ?>>) outs(%subview_29 : memref<1x1xf32, strided<[14, 1], offset: ?>>)
-# CHECK-NEXT:        } {"./d1"}
-# CHECK-NEXT:      } {"./d0"}
+# CHECK-NEXT:        } {"./j"}
+# CHECK-NEXT:      } {"./i"}
 # CHECK-NEXT:      return
 # CHECK-NEXT:    }
 # CHECK-NEXT:  }
@@ -231,9 +231,9 @@ print(f"CODE: {res}")
 # CHECK-NEXT:    outputs:
 # CHECK-NEXT:    - %5 : 14x14xfloat32
 # CHECK-NEXT:    nodes:
-# CHECK-NEXT:    - %2: pad(%0, padding={-2: (0, 2), -1: (0, 2)}, constant_value=0) {name = 'A_pad'} : [14x14xfloat32] -> [16x16xfloat32]
-# CHECK-NEXT:    - %3: pad(%1, padding={-2: (0, 2), -1: (0, 2)}, constant_value=0) {name = 'B_pad'} : [14x14xfloat32] -> [16x16xfloat32]
+# CHECK-NEXT:    - %2: pad2d(%0, padding={-2: (0, 2), -1: (0, 2)}, constant_value=0) {name = 'A_pad'} : [14x14xfloat32] -> [16x16xfloat32]
+# CHECK-NEXT:    - %3: pad2d(%1, padding={-2: (0, 2), -1: (0, 2)}, constant_value=0) {name = 'B_pad'} : [14x14xfloat32] -> [16x16xfloat32]
 # CHECK-NEXT:    - %4: matmul(%2, %3) {name = 'matmul_padded'} : [16x16xfloat32, 16x16xfloat32] -> [16x16xfloat32]
-# CHECK-NEXT:    - %5: unpad2d(%4, padding={-2: (0, 2), -1: (0, 2)}) {name = 'C'} : [16x16xfloat32] -> [14x14xfloat32]
+# CHECK-NEXT:    - %5: unpad(%4, padding={-2: (0, 2), -1: (0, 2)}) {name = 'C'} : [16x16xfloat32] -> [14x14xfloat32]
 # CHECK-NEXT:  
 # CHECK-NEXT:  CODE: 0

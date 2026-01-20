@@ -39,7 +39,7 @@ print(f"CODE: {res}")
 # CHECK-NEXT:    outputs:
 # CHECK-NEXT:    - %3 : 1x4x4x16xfloat32
 # CHECK-NEXT:    nodes:
-# CHECK-NEXT:    - %2: pad(%0, padding={-4: (0, 0), -3: (2, 2), -2: (2, 2), -1: (0, 0)}, constant_value=0) {name = 'pad'} : [1x8x8x3xfloat32] -> [1x12x12x3xfloat32]
+# CHECK-NEXT:    - %2: pad(%0, padding={-3: (2, 2), -2: (2, 2)}, constant_value=0) {name = 'pad'} : [1x8x8x3xfloat32] -> [1x12x12x3xfloat32]
 # CHECK-NEXT:    - %3: conv2d(%2, %1, stride=(2, 2)) {name = 'conv'} : [1x12x12x3xfloat32, 5x5x3x16xfloat32] -> [1x4x4x16xfloat32]
 # CHECK-NEXT:  
 # CHECK-NEXT:  # from tvm.script import ir as I

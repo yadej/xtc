@@ -9,10 +9,10 @@ a = O.tensor((I, K), dtype, name="A")
 b = O.tensor((K, J), dtype, name="B")
 
 with O.graph(name="pad_matmul_unpad") as gb:
-    p1 = O.pad(a, padding=2, axes=(-2, -1), name="A_pad")
-    p2 = O.pad(b, padding=2, axes=(-2, -1), name="B_pad")
+    p1 = O.pad(a, padding=2, name="A_pad")
+    p2 = O.pad(b, padding=2, name="B_pad")
     m_pad = O.matmul(p1, p2, name="matmul_padded")
-    O.unpad2d(m_pad, padding=2, axes=(-2, -1), name="C")
+    O.unpad(m_pad, padding=2, name="C")
 graph = gb.graph
 print(graph)
 
@@ -42,7 +42,7 @@ print(f"CODE: {res}")
 # CHECK-NEXT:    - %2: pad(%0, padding=(2, 2), constant_value=0) {name = 'A_pad'} : [14x14xfloat32] -> [18x18xfloat32]
 # CHECK-NEXT:    - %3: pad(%1, padding=(2, 2), constant_value=0) {name = 'B_pad'} : [14x14xfloat32] -> [18x18xfloat32]
 # CHECK-NEXT:    - %4: matmul(%2, %3) {name = 'matmul_padded'} : [18x18xfloat32, 18x18xfloat32] -> [18x18xfloat32]
-# CHECK-NEXT:    - %5: unpad2d(%4, padding={-2: (2, 2), -1: (2, 2)}) {name = 'C'} : [18x18xfloat32] -> [14x14xfloat32]
+# CHECK-NEXT:    - %5: unpad(%4, padding=(2, 2)) {name = 'C'} : [18x18xfloat32] -> [14x14xfloat32]
 # CHECK-NEXT:  
 # CHECK-NEXT:  # from tvm.script import ir as I
 # CHECK-NEXT:  # from tvm.script import tir as T

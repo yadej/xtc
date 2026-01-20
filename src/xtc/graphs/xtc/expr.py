@@ -18,7 +18,7 @@ from .operators import (
     XTCOperRelu,
     XTCOperConv2D,
     XTCOperPad2D,
-    XTCOperUnpad2D,
+    XTCOperUnpad,
     XTCOperPad,
     XTCOperReshape,
     XTCOperTranspose,
@@ -253,9 +253,9 @@ class XTCPad2DExpr(XTCOpExpr):
         super().__init__(XTCOperPad2D(**attrs), (inp,))
 
 
-class XTCUnpad2DExpr(XTCOpExpr):
+class XTCUnpadExpr(XTCOpExpr):
     def __init__(self, inp: XTCExpr, **attrs: Any) -> None:
-        super().__init__(XTCOperUnpad2D(**attrs), (inp,))
+        super().__init__(XTCOperUnpad(**attrs), (inp,))
 
 
 class XTCPadExpr(XTCOpExpr):
