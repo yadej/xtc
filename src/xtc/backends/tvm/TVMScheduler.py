@@ -439,6 +439,13 @@ class TVMScheduler(itf.schd.Scheduler):
         self.unrolling = unrolls
 
     @override
+    def fuse_producer_at(
+        self, axis: str, input_idx: int, root: str = DEFAULT_ROOT
+    ) -> None:
+        # TODO: not implemented for now
+        pass
+
+    @override
     def define_memory_mesh(self, axes: dict[str, int]) -> None:
         # TODO: not implemented for now
         pass
