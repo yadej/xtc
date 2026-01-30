@@ -60,7 +60,7 @@ Allow experts to **script optimization transformations**
 - Reduce reliance on opaque compiler heuristics
 - Can be driven by humans or autotuners
 
-**Examples:** TVM/TE, Halide, MLIR Transform dialect
+**Examples:** TVM/TE, Halide, MLIR Transform dialect, Exo
 
 ---
 
@@ -69,8 +69,8 @@ Allow experts to **script optimization transformations**
 Each scheduling language is **locked to its ecosystem**
 
 - TVM Tensor Expressions → TVM only
-- Halide → Halide framework only  
 - MLIR Transform dialect → MLIR ecosystem only
+- ...
 
 ---
 
@@ -167,7 +167,7 @@ sch.descript({
 2. **Reproducible measurements** with HW counter access
 3. **Identify backend limitations** (e.g., MLIR vectorization issues)
 4. **Evaluate performance models** against real hardware
-5. **Rapid prototyping** of new scheduling languages
+5. **Rapid prototyping** of new scheduling languages (see you at C4ML !!)
 
 ---
 
@@ -196,11 +196,12 @@ sch.descript({
 
 # Let's Get Started!
 
-**Questions before we dive in?**
-
 Paper: https://arxiv.org/abs/2512.16512
 GitHub: https://github.com/xtc-tools/xtc
+Doc: https://xtc-tools.github.io/xtc/
 
-Setup: follow the README.md
+The tutorial on your own machine:
+- Setup: clone the main branch & follow the README.md
+- Tutorial: once setup is done, run `make run-tutorial`
 
-Tutorial: once setup is done, run `make run-tutorial`
+Online tutorial on demand: https://tutorial.xtc-tools.org/guestX
