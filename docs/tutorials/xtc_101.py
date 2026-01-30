@@ -15,6 +15,11 @@ def _(mo):
     from io import StringIO
     from contextlib import redirect_stderr, redirect_stdout
     import traceback
+    from typing import Any
+    import queue
+    import time
+    import multiprocessing as mp
+    import exec_utils
 
     def get_backend_import(backend_name: str) -> str:
         """Return the import statement for the selected backend."""
@@ -152,6 +157,92 @@ def _(mo):
         sorted_results = sorted(results, key=lambda x: x["perf"], reverse=True)
         return sorted_results, captured_info
 
+    def start_streaming_execution(
+        *,
+        code: str,
+        out: Any,
+        throttle_s: float = 0.5,
+    ) -> Any:
+        """
+        Start a marimo Thread that launches a subprocess and streams its output.
+        Cancellation: if the spawning cell is invalidated, thread.should_exit becomes True,
+        and we terminate the subprocess.
+        """
+        def target():
+            import marimo as mo
+            thread = mo.current_thread()
+
+            ctx = mp.get_context("spawn")
+            out_q: "mp.Queue" = ctx.Queue()
+            p = ctx.Process(
+                target=exec_utils._child_exec,
+                args=(code, out_q),
+                daemon=True
+            )
+            p.start()
+
+            buf: list[str] = []
+            last = 0.0
+
+            def render(force: bool = False):
+                nonlocal last
+                now = time.time()
+                if force or (now - last) >= throttle_s:
+                    out.replace(
+                        mo.md(
+                            f"**Output:**\n\n```text\n{''.join(buf)}\n```"
+                        )
+                    )
+                    last = now
+
+            try:
+                out.replace(mo.md("**Output:**\n\n```text\n\n```"))
+                render(force=True)
+
+                while True:
+                    # Cancel requested? (cell invalidated by Cancel click / rerun / interrupt)
+                    if thread.should_exit:
+                        buf.append("\n[Cancelled]\n")
+                        render(force=True)
+                        if p.is_alive():
+                            p.terminate()
+                            p.join(timeout=1)
+                        break
+
+                    # Process ended?
+                    if not p.is_alive():
+                        # Drain remaining queue chunks
+                        while True:
+                            try:
+                                kind, payload = out_q.get_nowait()
+                            except queue.Empty:
+                                break
+                            if kind == "chunk":
+                                buf.append(payload)
+                        render(force=True)
+                        break
+
+                    # Get output chunk (non-blocking-ish)
+                    try:
+                        kind, payload = out_q.get(timeout=0.1)
+                    except queue.Empty:
+                        continue
+
+                    if kind == "chunk":
+                        buf.append(payload)
+                        render()
+                    elif kind == "done":
+                        # allow loop to observe process exit / drain remaining data
+                        continue
+            finally:
+                if p.is_alive():
+                    p.terminate()
+                    p.join(timeout=1)
+
+        t = mo.Thread(target=target, daemon=True)
+        t.start()
+        return t
+
     return (
         get_backend_import,
         get_print_opts_str,
@@ -164,6 +255,7 @@ def _(mo):
         render_editor_output,
         run_exploration,
         traceback,
+        start_streaming_execution,
     )
 
 @app.cell(hide_code=True)
@@ -1048,14 +1140,31 @@ print("Hello XTC!")''',
         language="python",
         label=""
     )
-    sandbox_editor
-    return sandbox_editor,
+    run = mo.ui.run_button(label="Run sandbox")
+    cancel = mo.ui.button(label="Stop execution", kind="danger")
+
+    mo.vstack(
+        [
+            sandbox_editor,
+            mo.hstack([run, cancel]),
+        ]
+    )
+    return sandbox_editor, run, cancel
 
 @app.cell
-def _(sandbox_editor, execute_editor_code, mo):
-    _success, _output, _ = execute_editor_code(sandbox_editor.value)
-    mo.stop(not _success, mo.md(f"**Code error:**\n```\n{_output}\n```"))
-    mo.md(f"**Output:**\n```\n{_output}\n```")
+def _(mo, sandbox_editor, run, cancel, start_streaming_execution):
+    # This output placeholder is what the background thread updates.
+    out = mo.output
+    out
+
+    # If cancel is clicked, this cell reruns; that invalidates the previous run-cell,
+    # making the old background thread's `should_exit` flip to True, and it will terminate.
+    if cancel.value:
+        out.replace(mo.md("Cancelled (if something was running, it will stop)."))
+    else:
+        mo.stop(not run.value, mo.md("*Click 'Run sandbox' to execute the code, and 'Stop execution' to cancel long runs.*"))
+        # Start background execution. It will keep streaming until done or cancelled.
+        start_streaming_execution(code=sandbox_editor.value, out=out, throttle_s=0.05)
     return
 
 if __name__ == "__main__":
