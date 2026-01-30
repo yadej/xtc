@@ -1,4 +1,4 @@
-# Software Architecture Design
+# XTC - Software Architecture Design
 
 XTC stands for Xdsl Transform Compiler, a dataflow graph compiler
 using domain specific (DSL) description for the operational semantic of the graph
@@ -37,7 +37,7 @@ Compiler classes:
 - Compiler: an abstract implementation of a compiler for a given backend and schedule
 - Module: an abstract representation of an executable module
 
-An Backend is constructed for an input Graph.
+A Backend is constructed for an input Graph.
 
 A Scheduler is constructed from a given Backend.
 
@@ -56,6 +56,11 @@ Evaluation Classes:
 
 An Executor or an Evaluator can be given a Module to execute and report validity and
 performannce metrics.
+
+Autotuning classes:
+
+- Strategy: an abstract implementation of a transformation template, actually defining a design space and sampler
+- Model: an abstract implementation of some predictive model, usable for iterative optimization on top of strategies
 
 ## Concrete implementations
 

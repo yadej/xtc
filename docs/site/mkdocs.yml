@@ -3,6 +3,7 @@ site_url: https://corse.gitlabpages.inria.fr/XTC/
 
 nav:
 - "Home": index.md
+- "Overview": overview.md
 - "Architecture": design/architecture.md
 - "Reference API": reference/api.md
 
