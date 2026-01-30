@@ -167,6 +167,13 @@ class MlirScheduler(itf.schd.Scheduler):
         self._current_scheduler.unroll(unrolls, root=root)
 
     @override
+    def fuse_producer_at(
+        self, axis: str, input_idx: int, root: str = DEFAULT_ROOT
+    ) -> None:
+        # TODO: not implemented for now
+        pass
+
+    @override
     def define_memory_mesh(self, axes: dict[str, int]) -> None:
         self._require_extension("sdist")
         self._current_scheduler.define_memory_mesh(axes)
