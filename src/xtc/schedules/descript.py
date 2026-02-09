@@ -623,10 +623,13 @@ class LoopNest:
 
     @staticmethod
     def _must_be_smaller_routine(
-        new_size: int, current_sizes: dict[str, int | None], loop_name: str, axis: str
+        new_size: int | None,
+        current_sizes: dict[str, int | None],
+        loop_name: str,
+        axis: str,
     ):
         old_size = current_sizes[axis]
-        if old_size is not None and new_size > old_size:
+        if old_size is not None and new_size is not None and new_size > old_size:
             raise ScheduleValidationError(
                 f"""
                 Inner loop {loop_name} on axis {axis} must be smaller than outer loop.
