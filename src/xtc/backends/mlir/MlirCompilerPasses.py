@@ -34,7 +34,7 @@ except ImportError:
     sdist_transform = None
     pass
 
-from xtc.itf.schd.scheduler import ROOT_SEP, SPLIT_LEFT_SEP
+from xtc.itf.schd.scheduler import ROOT_SEP
 from xtc.utils.ext_tools import transform_opts
 
 from .MlirProgram import RawMlirProgram
@@ -291,10 +291,11 @@ class MlirProgramInsertTransformPass:
                     schedule=schedule, root=loop_name, sched_state=sched_state
                 )
                 continue
-            loop_name_no_root = loop_name.rsplit(ROOT_SEP, 1)[-1]
-            loop_name_no_root = loop_name_no_root.split(SPLIT_LEFT_SEP)[0]
-            loop_name = root + ROOT_SEP + loop_name_no_root
-
+            axis_split = split_state.loop_dim_by_split.get(root)
+            if axis_split is not None and not (
+                schedule.is_base(loop_name) or schedule.is_tile(loop_name)
+            ):
+                loop_name = root + ROOT_SEP + axis_split
             # Bufferization
             if loop_name in schedule.distributed_buffers.keys():
                 self._distribute_buffer(
@@ -338,6 +339,7 @@ class MlirProgramInsertTransformPass:
         state_of_tiling: dict[str, int] = {dim: 1 for dim in schedule.dims}
         candidate_state_of_tiling = state_of_tiling.copy()
         previous_root = ""
+        split_state = SplitState(schedule.splits, previous_root)
         for loc_root, permutation in reversed(schedule.permutation.items()):
             if len(loc_root) == len(previous_root):
                 # Reset the view on the state of tiling (we are jumping into
@@ -346,16 +348,14 @@ class MlirProgramInsertTransformPass:
             else:
                 # Update the state of tiling
                 state_of_tiling = candidate_state_of_tiling.copy()
-
             for loop in reversed(permutation):
-                loop_no_root = loop.rsplit(ROOT_SEP, 1)[-1]
-                if SPLIT_LEFT_SEP in loop_no_root and loop_no_root not in loop:
-                    continue
-                loop_no_root = loop_no_root.split(SPLIT_LEFT_SEP)[0]
-                loop = loc_root + ROOT_SEP + loop_no_root
                 # The loop needs to be base or tile
                 if not (schedule.is_tile(loop) or schedule.is_base(loop)):
-                    continue
+                    axis_split = split_state.loop_dim_by_split.get(loc_root)
+                    if axis_split is not None:
+                        loop = loc_root + ROOT_SEP + axis_split
+                    else:
+                        continue
 
                 # Fetch the dimension knowledge
                 dim_of_loop = schedule.dim_of_tile(loop)
@@ -472,7 +472,7 @@ class MlirProgramInsertTransformPass:
         for dim_name in reversed(permutation):
             if (
                 dim_name in schedule.unrolling
-                and not dim_name in schedule.vectorization
+                and dim_name not in schedule.vectorization
             ):
                 assert self._named_sequence is not None
                 loop_unroll(
