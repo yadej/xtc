@@ -356,7 +356,7 @@ class MlirNVGPUTarget(MlirTarget):
 
     @property
     def cmd_opt(self):
-        opt = [f"{self._config.mlir_install_dir}/bin/opt"]
+        opt = [f"{self._config.llvm_install_dir}/bin/opt"]
         return (
             opt
             + opt_opts
@@ -365,7 +365,7 @@ class MlirNVGPUTarget(MlirTarget):
 
     @property
     def cmd_llc(self):
-        llc = [f"{self._config.mlir_install_dir}/bin/llc"]
+        llc = [f"{self._config.llvm_install_dir}/bin/llc"]
         if self._config.arch == "native":
             llc_arch = [f"--mcpu={self._config.cpu}"]
         else:
