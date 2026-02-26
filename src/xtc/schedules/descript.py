@@ -221,6 +221,8 @@ class ScheduleInterpreter:
 
     def __init__(self, abstract_axis: list[str]):
         self.abstract_axis = abstract_axis
+        self.root_to_dim: dict[str, str] = {}
+        self.dim_to_axis: dict[str, str] = {}
 
     def interpret(self, spec: ScheduleSpec, root: str) -> LoopNest:
         """Interpret a schedule specification into a LoopNest."""
@@ -234,10 +236,9 @@ class ScheduleInterpreter:
         # Track state during interpretation
         sizes: dict[str, int] = {}
         previous_cut: dict[str, int | None] = {a: 0 for a in self.abstract_axis}
-        rest, sep, axis_root_name = root.rpartition(ROOT_SEP)
         interchange: list[str] = []
-        if sep:
-            interchange.append(axis_root_name)
+        if root in self.root_to_dim:
+            interchange.append(self.root_to_dim[root])
 
         for item in spec.items:
             if isinstance(item, SplitDecl):
@@ -298,7 +299,8 @@ class ScheduleInterpreter:
         new_root_name = f"{root}{ROOT_SEP}{new_dim_name}"
         slice.splits[axis_name][new_dim_name] = x
         interchange.append(new_dim_name)
-
+        self.dim_to_axis[new_dim_name] = axis_name
+        self.root_to_dim[new_root_name] = new_dim_name
         # Recursively interpret the nested schedule
         inner_nest = self._interpret_spec(item.body, new_root_name)
         loop_nest.slices += inner_nest.slices
@@ -334,8 +336,7 @@ class ScheduleInterpreter:
         # Unreachable when built from a Python dict (because keys
         # can't be duplicated).
         for loop_name in interchange:
-            loop_name = loop_name.split(SPLIT_LEFT_SEP)[0]
-            if loop_name == axis_name:
+            if self.dim_to_axis.get(loop_name, loop_name) == axis_name:
                 raise ScheduleInterpretError(
                     f"Axis {axis_name} is scheduled twice (or more)."
                 )
@@ -559,8 +560,8 @@ class LoopNest:
         seen_axes: dict[str, int | None] = {}
         for sched in self.slices:
             for loop_name in sched.interchange:
-                if not loop_name in sched.splits_to_sizes:
-                    loop_name = loop_name.split(SPLIT_LEFT_SEP)[0]
+                loop_name = mapper.splits_to_axis.get(loop_name, loop_name)
+
                 if loop_name in mapper.dims:
                     seen_axes[loop_name] = None
                 elif loop_name in mapper.tiles_to_axis:
