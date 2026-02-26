@@ -162,7 +162,8 @@ class XTCOperMatmul(XTCOperator):
 
     @override
     def forward(self, inputs: Sequence[Tensor]) -> Sequence[XTCTensor]:
-        matmul = XTCTensor(np.matmul(inputs[0].numpy(), inputs[1].numpy()))
+        # Note, use np.dot instead of np.matmul which may be buggy on Mac accelerators
+        matmul = XTCTensor(np.dot(inputs[0].numpy(), inputs[1].numpy()))
         expected_type = self.forward_types([inp.type for inp in inputs])[0]
         assert matmul.type == expected_type, (
             f"output type mismatch expect: {matmul.type} != {expected_type}"
