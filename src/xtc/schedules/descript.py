@@ -237,6 +237,7 @@ class ScheduleInterpreter:
         sizes: dict[str, int] = {}
         previous_cut: dict[str, int | None] = {a: 0 for a in self.abstract_axis}
         interchange: list[str] = []
+        # Only the first root is not in root_to_dim
         if root in self.root_to_dim:
             interchange.append(self.root_to_dim[root])
 
