@@ -5,6 +5,7 @@
 from dataclasses import dataclass, field
 from xtc.utils.tools import (
     get_mlir_prefix,
+    get_llvm_prefix,
 )
 
 
@@ -13,6 +14,7 @@ class MlirConfig:
     shared_lib: bool = False
     executable: bool = False
     mlir_install_dir: str | None = None
+    llvm_install_dir: str | None = None
     to_disassemble: str = ""
     save_temps: bool = False
     save_temps_dir: str = "./save_temps_dir"
@@ -32,6 +34,11 @@ class MlirConfig:
     selected_device: int | None = None
 
     def __post_init__(self):
+        object.__setattr__(
+            self,
+            "llvm_install_dir",
+            get_llvm_prefix(self.llvm_install_dir or self.mlir_install_dir),
+        )
         object.__setattr__(
             self, "mlir_install_dir", get_mlir_prefix(self.mlir_install_dir)
         )
