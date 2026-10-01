@@ -10,7 +10,7 @@ from pprint import pformat
 from copy import deepcopy
 
 from xtc.itf.schd.scheduler import DEFAULT_ROOT
-from xtc.schedules.loop_names import make_loop_name, basename
+from xtc.schedules.loop_names import make_loop_name, basename, parent_name
 
 
 @dataclass(frozen=True)
@@ -50,7 +50,7 @@ class PlainNodeSchedule:
     def is_tile(self, loop_name: str) -> bool:
         for tiles in self.tiles.values():
             for tile in tiles:
-                if loop_name == tile:
+                if loop_name == tile or basename(loop_name) == basename(tile):
                     return True
         return False
 
@@ -65,7 +65,7 @@ class PlainNodeSchedule:
         # Tiled dimension
         for dim, tiles in self.tiles.items():
             for tile in tiles:
-                if bn == dim or loop_name == tile:
+                if bn == dim or loop_name == tile or basename(tile) == bn:
                     return basename(dim)
         assert False
 
@@ -73,6 +73,13 @@ class PlainNodeSchedule:
         for tiles in self.tiles.values():
             if tile_name in tiles:
                 return tiles[tile_name]
+        # For gpu with splitting you need to get
+        # the size of the tile before
+        bn = basename(tile_name)
+        for tiles in self.tiles.values():
+            for tile, size in tiles.items():
+                if basename(tile) == bn:
+                    return size
         return None
 
     @override
@@ -295,22 +302,35 @@ class PlainNodeScheduler:
         fuse_axis = make_loop_name(root, axis)
         self.fused_consumers.append(fuse_axis)
 
+    def _replace_root_gpu_entries(
+        self, entries: list[str], root: str, names: list[str]
+    ) -> list[str]:
+        return [e for e in entries if parent_name(e) != root] + names
+
     def gpu_block(self, axes: list[str], root: str = DEFAULT_ROOT):
         assert len(axes) == len(set(axes)), "Duplicate in the axes for gpu thread"
         assert len(axes) <= 3, "We cannot map more than 3 dimension for gpu block"
-        self.gpu_blocks = [make_loop_name(root, axis) for axis in axes]
+        self.gpu_blocks = self._replace_root_gpu_entries(
+            self.gpu_blocks, root, [make_loop_name(root, axis) for axis in axes]
+        )
 
     def gpu_thread(self, axes: list[str], root: str = DEFAULT_ROOT):
         assert len(axes) <= 3, "We cannot map more than 3 dimension for gpu thread"
         assert len(axes) == len(set(axes)), "Duplicate in the axes for gpu thread"
-        self.gpu_threads = [make_loop_name(root, axis) for axis in axes]
+        self.gpu_threads = self._replace_root_gpu_entries(
+            self.gpu_threads, root, [make_loop_name(root, axis) for axis in axes]
+        )
 
     def gpu_lane(self, axes: list[str], root: str = DEFAULT_ROOT):
         assert len(axes) <= 3, "We cannot map more than 3 dimension for gpu lane"
         assert len(axes) == len(set(axes)), "Duplicate in the axes for gpu lane"
-        self.gpu_lanes = [make_loop_name(root, axis) for axis in axes]
+        self.gpu_lanes = self._replace_root_gpu_entries(
+            self.gpu_lanes, root, [make_loop_name(root, axis) for axis in axes]
+        )
 
     def gpu_warp(self, axes: list[str], root: str = DEFAULT_ROOT):
         assert len(axes) == len(set(axes)), "Duplicate in the axes for gpu warp"
         assert len(axes) <= 3, "We cannot map more than 3 dimension for gpu warp"
-        self.gpu_warps = [make_loop_name(root, axis) for axis in axes]
+        self.gpu_warps = self._replace_root_gpu_entries(
+            self.gpu_warps, root, [make_loop_name(root, axis) for axis in axes]
+        )

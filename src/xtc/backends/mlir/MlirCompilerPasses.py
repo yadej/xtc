@@ -143,7 +143,7 @@ class MlirProgramInsertTransformPass:
         self._super_vectorize_sequence: NamedSequenceOp | None = None
         self._post_bufferize_sequence: NamedSequenceOp | None = None
         self._named_sequence: NamedSequenceOp | None = None
-        self._gpu_block_order: ArrayAttr | None = None
+        self._gpu_block_orders: dict[str, ArrayAttr] = {}
         self._nodes_schedules = (
             self._mlir_schedule.schedule_impl if self._mlir_schedule is not None else []
         )
@@ -342,6 +342,18 @@ class MlirProgramInsertTransformPass:
         permutation = schedule.permutation[root]
         if not permutation:
             return sched_state
+        gpu_blocks_of_root = [
+            gpu for gpu in schedule.gpu_blocks if parent_name(gpu) == root
+        ]
+        gpu_warps_of_root = [
+            gpu for gpu in schedule.gpu_warps if parent_name(gpu) == root
+        ]
+        gpu_threads_of_root = [
+            gpu for gpu in schedule.gpu_threads if parent_name(gpu) == root
+        ]
+        gpu_lanes_of_root = [
+            gpu for gpu in schedule.gpu_lanes if parent_name(gpu) == root
+        ]
         gpu_material = True
         gpu_mat_thread = True
         gpu_warp_thread = True
@@ -386,7 +398,7 @@ class MlirProgramInsertTransformPass:
                             loop_name=loop_name,
                             schedule=schedule,
                             sched_state=sched_state,
-                            gpu_list=schedule.gpu_blocks,
+                            gpu_list=gpu_blocks_of_root,
                             permutation=permutation,
                             tiles_sizes_by_loops=tiles_sizes_by_loops,
                         )
@@ -397,7 +409,7 @@ class MlirProgramInsertTransformPass:
                             loop_name=loop_name,
                             schedule=schedule,
                             sched_state=sched_state,
-                            gpu_list=schedule.gpu_warps,
+                            gpu_list=gpu_warps_of_root,
                             permutation=permutation,
                             tiles_sizes_by_loops=tiles_sizes_by_loops,
                         )
@@ -408,7 +420,7 @@ class MlirProgramInsertTransformPass:
                             loop_name=loop_name,
                             schedule=schedule,
                             sched_state=sched_state,
-                            gpu_list=schedule.gpu_threads,
+                            gpu_list=gpu_threads_of_root,
                             permutation=permutation,
                             tiles_sizes_by_loops=tiles_sizes_by_loops,
                         )
@@ -419,7 +431,7 @@ class MlirProgramInsertTransformPass:
                             loop_name=loop_name,
                             schedule=schedule,
                             sched_state=sched_state,
-                            gpu_list=schedule.gpu_lanes,
+                            gpu_list=gpu_lanes_of_root,
                             permutation=permutation,
                             tiles_sizes_by_loops=tiles_sizes_by_loops,
                         )
@@ -620,7 +632,13 @@ class MlirProgramInsertTransformPass:
             attr_array["mapping"] = ArrayAttr.get(
                 [self._get_block_id(index) for index in mapping_order]
             )
-            self._gpu_block_order = attr_array["mapping"]
+            # Get the first loop_name that in that root
+            block_loop_name = next(
+                gpu
+                for gpu in schedule.gpu_blocks
+                if parent_name(gpu) == parent_name(loop_name)
+            )
+            self._gpu_block_orders[block_loop_name] = attr_array["mapping"]
             tiling_command = TileUsingForallOp(sched_state.handle, **attr_array)
         elif loop_name in schedule.gpu_threads:
             attr_array["mapping"] = ArrayAttr.get(
@@ -647,7 +665,11 @@ class MlirProgramInsertTransformPass:
         new_loop = tiling_command.results[-1]
         sched_state.all_loops[loop_name] = new_loop
         if loop_name in schedule.gpu_blocks:
-            loop_name = schedule.gpu_blocks[0]
+            loop_name = next(
+                gpu
+                for gpu in schedule.gpu_blocks
+                if parent_name(gpu) == parent_name(loop_name)
+            )
         # Annotate the resulting loop if successfully generated
         transform.AnnotateOp(new_loop, loop_name)
 
@@ -889,46 +911,66 @@ class MlirProgramInsertTransformPass:
         sched_state: SchedulingState,
     ):
         if schedule.gpu_blocks and not self._using_tensors:
-            new_loop = next(
-                (
-                    sched_state.all_loops[loop_name]
-                    for loop_name in schedule.gpu_blocks
-                    if loop_name in sched_state.all_loops
-                ),
-                None,
-            )
-            self._gpu_mapping_helper(schedule, new_loop)
+            for loop_name in schedule.gpu_blocks:
+                if loop_name in sched_state.all_loops:
+                    self._gpu_mapping_helper(
+                        schedule,
+                        sched_state.all_loops[loop_name],
+                        root=parent_name(loop_name),
+                    )
         elif (
             schedule.gpu_blocks
             and self._using_tensors
             and self._post_bufferize_sequence
-            and self._gpu_block_order is not None
+            and self._gpu_block_orders
         ):
             with (
                 InsertionPoint.at_block_begin(self._post_bufferize_sequence.body),
                 self._mlir_program.mlir_context,
                 self._loc,
             ):
-                gpu_block_handle = structured_match(
-                    results_=transform.AnyOpType.get(),
-                    target=self._post_bufferize_sequence.bodyTarget,
-                    op_attrs={
-                        schedule.gpu_blocks[0]: UnitAttr.get(),
-                        "mapping": self._gpu_block_order,
-                    },
-                )
-                self._gpu_mapping_helper(schedule, gpu_block_handle)
+                for loop_name, mapping in self._gpu_block_orders.items():
+                    gpu_block_handle = structured_match(
+                        results_=transform.AnyOpType.get(),
+                        target=self._post_bufferize_sequence.bodyTarget,
+                        op_attrs={
+                            loop_name: UnitAttr.get(),
+                            "mapping": mapping,
+                        },
+                    )
+                    self._gpu_mapping_helper(
+                        schedule,
+                        gpu_block_handle,
+                        root=parent_name(loop_name),
+                    )
 
-    def _gpu_mapping_helper(self, schedule: MlirNodeSchedule, handle: OpResult):
+    def _gpu_mapping_helper(
+        self, schedule: MlirNodeSchedule, handle: OpResult, root: str
+    ):
         tiles_sizes_by_loops = self._generate_tiling_insns(schedule)
         new_loop = MapForallToBlocks(
             handle,
             generate_gpu_launch=True,
         ).result
         block_dims: list[int] = []
-        for curType, gpu_list in enumerate(
-            [schedule.gpu_threads, schedule.gpu_lanes, schedule.gpu_warps]
-        ):
+        gpu_lists_of_root = [
+            [
+                loop_name
+                for loop_name in schedule.gpu_threads
+                if parent_name(loop_name) == root
+            ],
+            [
+                loop_name
+                for loop_name in schedule.gpu_lanes
+                if parent_name(loop_name) == root
+            ],
+            [
+                loop_name
+                for loop_name in schedule.gpu_warps
+                if parent_name(loop_name) == root
+            ],
+        ]
+        for curType, gpu_list in enumerate(gpu_lists_of_root):
             if not gpu_list:
                 continue
             # If there is a something in gpu warp multiply it by 32
@@ -967,7 +1009,6 @@ class MlirProgramInsertTransformPass:
             for values in zip(*[tiles_sizes_by_loops[loop] for loop in gpu_list])
         ]
         tile_vect = tile_vect + [0] * (3 - len(tile_vect))
-        # TODO: Make it work with splitting
         position_index = [permutation.index(loop) for loop in gpu_list]
         mapping_order = sorted(
             range(len(position_index)), key=lambda i: position_index[i]

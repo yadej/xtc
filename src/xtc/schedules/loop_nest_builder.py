@@ -35,6 +35,14 @@ class LoopNestBuilder:
         def localize_axis_list(axis_list: list[str]) -> list[str]:
             return [basename(axis) for axis in axis_list if is_node_axis(axis)]
 
+        def localize_gpu_list(gpu_list: list[str]) -> dict[str, int]:
+            return {
+                basename(axis): mapping
+                for mapping, axis in enumerate(
+                    [axis for axis in gpu_list if is_node_axis(axis)]
+                )
+            }
+
         def localize_axis_dict(axis_dict: dict[str, Any]) -> dict[str, Any]:
             return {
                 basename(axis): v for axis, v in axis_dict.items() if is_node_axis(axis)
@@ -50,7 +58,7 @@ class LoopNestBuilder:
         perms = {
             full_name: v for p, v in node_sched.permutation.items() if is_node_root(p)
         }
-        interchange = [basename(p) for p in perms[full_name]]
+        interchange = [basename(p) for p in perms.get(full_name, [])]
         splits = {
             basename(axis): {basename(k): v for k, v in node_sched.splits[axis].items()}
             for axis in node_sched.splits
@@ -66,6 +74,10 @@ class LoopNestBuilder:
         vectorize = localize_axis_list(node_sched.vectorization)
         parallelize = localize_axis_list(node_sched.parallelization)
         unroll = localize_axis_dict(node_sched.unrolling)
+        gpu_block = localize_gpu_list(node_sched.gpu_blocks)
+        gpu_thread = localize_gpu_list(node_sched.gpu_threads)
+        gpu_lane = localize_gpu_list(node_sched.gpu_lanes)
+        gpu_warp = localize_gpu_list(node_sched.gpu_warps)
         # TODO: loop nest supports only one buffer per axis
         buffer_at = {
             basename(axis): v[0]
@@ -96,6 +108,10 @@ class LoopNestBuilder:
             fuse_producer_at=fuse_producer_at,
             fuse_consumer_at=fuse_consumer_at,
             external_at=external_at,
+            gpu_block=gpu_block,
+            gpu_thread=gpu_thread,
+            gpu_lane=gpu_lane,
+            gpu_warp=gpu_warp,
             splits=splits,
             parent=parent,
             split_origin=split_origin,

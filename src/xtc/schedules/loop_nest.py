@@ -386,7 +386,7 @@ class LoopNest:
         self._check_external_consistency()
         self._check_tiling_consistency(info)
         self._check_sizes(info)
-        self._check_gpu_consistency()
+        self._check_gpu_consistency(info)
 
     def _check_use_defined_dims(self, info: LoopInfo):
         for dim in self.abstract_dims:
@@ -507,14 +507,15 @@ class LoopNest:
                             f'`{{"unroll" = {unroll_factor}}}`: unroll factor should be smaller than {loop_size}.'
                         )
 
-    def _check_gpu_consistency(self) -> None:
+    def _check_gpu_consistency(self, info: LoopInfo) -> None:
         for sched in self.nodes:
-            gpu_sets = {
-                "gpu_block": set(sched.gpu_block.keys()),
-                "gpu_thread": set(sched.gpu_thread.keys()),
-                "gpu_lane": set(sched.gpu_lane.keys()),
-                "gpu_warp": set(sched.gpu_warp.keys()),
+            gpu_maps = {
+                "gpu_block": sched.gpu_block,
+                "gpu_thread": sched.gpu_thread,
+                "gpu_lane": sched.gpu_lane,
+                "gpu_warp": sched.gpu_warp,
             }
+            gpu_sets = {name: set(m.keys()) for name, m in gpu_maps.items()}
 
             primitive_names = list(gpu_sets.keys())
             for prim1, prim2 in combinations(primitive_names, 2):
@@ -533,6 +534,24 @@ class LoopNest:
                 raise ScheduleValidationError(
                     "gpu_block requires either gpu_thread or gpu_lane or gpu_warp to be specified."
                 )
+
+            for prim_name, gpu_map in gpu_maps.items():
+                loop_of_axis: dict[str, str] = {}
+                for loop in gpu_map:
+                    axis = info.loops_to_axis.get(loop)
+                    if axis is None:
+                        raise ScheduleValidationError(
+                            f"Loop {loop} mapped to {prim_name} is not"
+                            " part of the loop nest."
+                        )
+                    other_loop = loop_of_axis.get(axis)
+                    if other_loop is not None:
+                        raise ScheduleValidationError(
+                            f"Loops {other_loop} and {loop} of axis {axis} are"
+                            f" both mapped to {prim_name}: at most one loop per"
+                            " dimension can be mapped to a gpu primitive"
+                        )
+                    loop_of_axis[axis] = loop
 
     @staticmethod
     def _must_be_smaller_routine(

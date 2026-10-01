@@ -322,12 +322,16 @@ class ScheduleInterpreter:
             return ""
         self._check_axis_existence(axis_name)
 
-        # Unreachable when built from a Python dict (because keys
-        # can't be duplicated).
+        # The axis can already be scheduled, e.g. it carries the chunk
+        # of a split section. Re-listing it with annotations annotates
+        # the existing loop instead of scheduling it again, a bare
+        # re-listing is a useless duplicate and stays an error
         if axis_name in interchange:
-            raise ScheduleInterpretError(
-                f"Axis {axis_name} is scheduled twice (or more)."
-            )
+            if item.annotations == Annotations():
+                raise ScheduleInterpretError(
+                    f"Axis {axis_name} is scheduled twice (or more)."
+                )
+            return axis_name
 
         interchange.append(axis_name)
         return axis_name
