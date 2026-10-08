@@ -47,6 +47,13 @@ class LoopNestBuilder:
                 (basename(axis), v) for axis, v in axis_tuples if is_node_axis(axis)
             ]
 
+        def localize_gpu_list(axes: list[str]) -> dict[str, int]:
+            return {
+                basename(axis): index
+                for index, axis in enumerate(axes)
+                if is_node_axis(axis)
+            }
+
         perms = {
             full_name: v for p, v in node_sched.permutation.items() if is_node_root(p)
         }
@@ -83,6 +90,10 @@ class LoopNestBuilder:
         # TODO: loop nest supports only one fuse consumer per axis
         fuse_consumer_at = localize_axis_list(node_sched.fused_consumers)
         external_at = localize_axis_dict(node_sched.externals)
+        gpu_block = localize_gpu_list(node_sched.gpu_blocks)
+        gpu_thread = localize_gpu_list(node_sched.gpu_threads)
+        gpu_warp = localize_gpu_list(node_sched.gpu_warps)
+        gpu_lane = localize_gpu_list(node_sched.gpu_lanes)
 
         return LoopNestNode(
             root=basename(full_name),
@@ -96,6 +107,10 @@ class LoopNestBuilder:
             fuse_producer_at=fuse_producer_at,
             fuse_consumer_at=fuse_consumer_at,
             external_at=external_at,
+            gpu_block=gpu_block,
+            gpu_thread=gpu_thread,
+            gpu_warp=gpu_warp,
+            gpu_lane=gpu_lane,
             splits=splits,
             parent=parent,
             split_origin=split_origin,
